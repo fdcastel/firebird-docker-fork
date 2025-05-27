@@ -237,6 +237,7 @@ task Prepare {
     # Clear/create output folder
     Remove-Item -Path $outputFolder -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory $outputFolder -Force > $null
+    New-Item -ItemType Directory (Join-Path $outputFolder 'logs') -Force > $null
 
     # For each asset
     $assets = Get-Content -Raw -Path '.\assets.json' | ConvertFrom-Json
@@ -282,24 +283,51 @@ task Prepare {
 
 # Synopsis: Build all docker images.
 task Build Prepare, {
+    $PSStyle.OutputRendering = 'PlainText'
+    $logFolder = Join-Path $outputFolder 'logs'
     $builds = Get-ChildItem "$outputFolder/**/image.build.ps1" -Recurse | ForEach-Object {
-        @{File = $_; Task = 'Build' }
+        $version = $_.Directory.Parent.Name
+        $variant = $_.Directory.Name
+        $taskName = "Build"
+        @{
+            File = $_.FullName
+            Task = $taskName
+            Log = (Join-Path $logFolder "$taskName-$version-$variant.log")
+        }
     }
     Build-Parallel $builds
 }
 
 # Synopsis: Run all tests.
 task Test {
+    $PSStyle.OutputRendering = 'PlainText'
+    $logFolder = Join-Path $outputFolder 'logs'
     $builds = Get-ChildItem "$outputFolder/**/image.build.ps1" -Recurse | ForEach-Object {
-        @{File = $_; Task = 'Test' }
+        $version = $_.Directory.Parent.Name
+        $variant = $_.Directory.Name
+        $taskName = "Test"
+        @{
+            File = $_.FullName
+            Task = $taskName
+            Log = (Join-Path $logFolder "$taskName-$version-$variant.log")
+        }
     }
     Build-Parallel $builds
 }
 
 # Synopsis: Publish all images.
 task Publish {
+    $PSStyle.OutputRendering = 'PlainText'
+    $logFolder = Join-Path $outputFolder 'logs'
     $builds = Get-ChildItem "$outputFolder/**/image.build.ps1" -Recurse | ForEach-Object {
-        @{File = $_; Task = 'Publish' }
+        $version = $_.Directory.Parent.Name
+        $variant = $_.Directory.Name
+        $taskName = "Publish"
+        @{
+            File = $_.FullName
+            Task = $taskName
+            Log = (Join-Path $logFolder "$taskName-$version-$variant.log")
+        }
     }
     Build-Parallel $builds
 }

@@ -10,6 +10,7 @@ task Build {
     $script:BUILDER_IMAGE_VERSION = '<%$TImageVersion%>'
     $script:BUILDER_IMAGE_TAGS = @(<%$TImageTags%>)
 
+    $progressPlainParameter = if ($PSStyle.OutputRendering -eq 'PlainText') { '--progress=plain' } else { $null }
     $noCacheParameter = if ($NoCache) { '--no-cache' } else { $null }
 
     $tagsArchAMD64 = $BUILDER_IMAGE_TAGS | ForEach-Object { '--tag', "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" }
@@ -17,6 +18,7 @@ task Build {
 
     $allParameters = @(
         'build';
+        $progressPlainParameter
         '--platform', 'linux/amd64';
         $tagsArchAMD64;
         $noCacheParameter,
@@ -25,12 +27,14 @@ task Build {
         '--label', 'org.opencontainers.image.version=<%$TImageVersion%>',
         '.'
     )
-    Write-Verbose "docker $allParameters"
-    exec { & docker $allParameters }
+    Write-Output "`n`n----- [linux/amd64] -----"
+    Write-Output "Running: docker $allParameters"
+    exec { & docker $allParameters *>&1 }
 
     if ($BUILDER_HAS_ARCH_ARM64) {
         $allParameters = @(
             'build';
+            $progressPlainParameter
             '--platform', 'linux/arm64';
             '--build-arg', 'ARCH_ARM64=1';
             $tagsArchARM64;
@@ -40,9 +44,10 @@ task Build {
             '--label', 'org.opencontainers.image.version=<%$TImageVersion%>',
             '.'
         )
-        Write-Verbose "docker $allParameters"
-        exec { & docker $allParameters }
-	}
+        Write-Output "`n`n----- [linux/arm64] -----"
+        Write-Output "Running: docker $allParameters"
+        exec { & docker $allParameters *>&1 }
+    }
 }
 
 # Synopsis: Run tests.
