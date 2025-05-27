@@ -182,6 +182,18 @@ task FIREBIRD_DATABASE_can_create_database_with_absolute_path {
     }
 }
 
+task FIREBIRD_DATABASE_can_create_database_with_unicode_characters {
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=/tmp/próf-🗄️.fdb' {
+        param($cId)
+
+        docker exec $cId test -f /tmp/próf-🗄️.fdb |
+            ExitCodeIs -ExpectedValue 0
+
+        docker logs $cId |
+            Contains -Pattern "Creating database '/tmp/próf-🗄️.fdb'"
+    }
+}
+
 task FIREBIRD_DATABASE_PAGE_SIZE_can_set_page_size_on_database_creation {
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_DATABASE_PAGE_SIZE=4096' {
         param($cId)
