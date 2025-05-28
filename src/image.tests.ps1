@@ -98,11 +98,12 @@ function ContainsExactly([Parameter(ValueFromPipeline)]$InputValue, [string[]]$P
 }
 
 # Asserts that LastExitCode is equal to ExpectedValue.
-function ExitCodeIs ([Parameter(ValueFromPipeline)]$InputValue, [int]$ExpectedValue, [string]$ErrorMessage) {
+function ExitCodeIs ([Parameter(ValueFromPipeline)]$Unused, [int]$ExpectedValue, [string]$ErrorMessage) {
     process { }
     end {
+        # Actual value from pipeline is discarded. Just check for $LastExitCode.
         if ([string]::IsNullOrEmpty($ErrorMessage)) {
-            $ErrorMessage = "ExitCode = $InputValue, expected = $ExpectedValue."
+            $ErrorMessage = "ExitCode = $LastExitCode, expected = $ExpectedValue."
         }
         assert ($LastExitCode -eq $ExpectedValue) $ErrorMessage
     }
@@ -183,14 +184,14 @@ task FIREBIRD_DATABASE_can_create_database_with_absolute_path {
 }
 
 task FIREBIRD_DATABASE_can_create_database_with_unicode_characters {
-    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=/tmp/próf-🗄️.fdb' {
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=/tmp/próf-áêïôù.fdb' {
         param($cId)
 
-        docker exec $cId test -f /tmp/próf-🗄️.fdb |
+        docker exec $cId test -f '/tmp/próf-áêïôù.fdb' |
             ExitCodeIs -ExpectedValue 0
 
         docker logs $cId |
-            Contains -Pattern "Creating database '/tmp/próf-🗄️.fdb'"
+            Contains -Pattern "Creating database '/tmp/próf-áêïôù.fdb'"
     }
 }
 
