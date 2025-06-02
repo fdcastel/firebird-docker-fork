@@ -1,0 +1,48 @@
+name: test-issue-28
+
+on:
+  push:
+    branches:
+      - issue-28
+  workflow_dispatch:
+
+# Ensures only one instance of this workflow will run at a time.
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  build-test:
+    if: ${{ github.repository == 'fdcastel/firebird-docker-fork' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - name: Install tools
+        shell: pwsh
+        run: |
+          Install-Module InvokeBuild -Force
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Docker images
+        shell: pwsh
+        run: |
+          Invoke-Build Build -Verbose -VersionFilter 3.0.8
+
+      - name: Run Test TZ_can_change_system_timezone
+        shell: pwsh
+        run: |
+          Invoke-Build Test -Verbose -VersionFilter 3.0.8 -TestFilter TZ_can_change_system_timezone
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs
+          path: generated/logs
