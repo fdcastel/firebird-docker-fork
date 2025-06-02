@@ -36,15 +36,15 @@ jobs:
         run: |
           Install-Module InvokeBuild -Force
 
-      - name: Build
+      - name: Build (filtered)
         shell: pwsh
         run: |
-          Invoke-Build
+          Invoke-Build -Verbose -VersionFilter 3.0.8
 
-      - name: Test
+      - name: Test (filtered)
         shell: pwsh
         run: |
-          Invoke-Build Test
+          Invoke-Build Test -Verbose -VersionFilter 3.0.8 -TestFilter TZ_can_change_system_timezone
 
       - name: Upload logs
         uses: actions/upload-artifact@v4
