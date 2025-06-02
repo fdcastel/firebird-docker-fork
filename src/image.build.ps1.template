@@ -1,6 +1,6 @@
 param(
     [switch]$NoCache,
-    [string]$TestName  # Used only in 'Test' task.
+    [string]$TestFilter  # Filter by test name, e.g. 'FIREBIRD_USER_can_create_user'. -- Used only in 'Test' task.
 )
 
 # Synopsis: Build docker images.
@@ -56,50 +56,20 @@ task Test Build, {
     Write-Build Magenta "----- [$BUILDER_IMAGE_VERSION] ---------------------"
     $tag = $BUILDER_IMAGE_TAGS[0]
 
-    if ($TestName) {
-        Write-Verbose "Running single test '$TestName'..."
+    if ($TestFilter) {
+        Write-Verbose "Running single test '$TestFilter'..."
     } else {
         Write-Verbose "Running all tests..."
-        $TestName = '*'
+        $TestFilter = '*'
     }
 
     $env:FULL_IMAGE_NAME = "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:${tag}"
     Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
-    Invoke-Build $TestName image.tests.ps1
+    Invoke-Build $TestFilter image.tests.ps1
 
     if ($BUILDER_HAS_ARCH_ARM64) {
         $env:FULL_IMAGE_NAME = "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:${tag}"
         Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
-        Invoke-Build $TestName image.tests.ps1
-    }
-}
-
-# Synopsis: Publish image.
-task Publish Build, {
-    Write-Build Magenta "----- [$BUILDER_IMAGE_VERSION] ---------------------"
-
-    $BUILDER_IMAGE_TAGS | ForEach-Object {
-        docker push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_"
-
-        if ($BUILDER_HAS_ARCH_ARM64) {
-            docker push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_"
-
-            docker manifest create --amend "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_" `
-                "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" `
-                "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_"
-
-            docker manifest annotate "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_" `
-                "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" --os linux --arch amd64
-            docker manifest annotate "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_" `
-                "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_" --os linux --arch arm64
-
-            docker manifest push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_"
-        }
-        else {
-            docker image tag "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" `
-                "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_"
-
-            docker push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}:$_"
-        }
+        Invoke-Build $TestFilter image.tests.ps1
     }
 }
