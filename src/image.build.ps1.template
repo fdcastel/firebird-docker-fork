@@ -11,28 +11,35 @@ task Build {
     $script:BUILDER_IMAGE_VERSION = '<%$TImageVersion%>'
     $script:BUILDER_IMAGE_TAGS = @(<%$TImageTags%>)
 
+    # Get target architecture from environment variable or build all architectures
+    $targetArch = $env:TARGET_ARCH
+    $targetPlatform = $env:TARGET_PLATFORM
+
     $progressPlainParameter = if ($PSStyle.OutputRendering -eq 'PlainText') { '--progress=plain' } else { $null }
     $noCacheParameter = if ($NoCache) { '--no-cache' } else { $null }
 
-    $tagsArchAMD64 = $BUILDER_IMAGE_TAGS | ForEach-Object { '--tag', "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" }
-    $tagsArchARM64 = $BUILDER_IMAGE_TAGS | ForEach-Object { '--tag', "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_" }
+    if ($targetArch -eq 'amd64' -or -not $targetArch) {
+        $tagsArchAMD64 = $BUILDER_IMAGE_TAGS | ForEach-Object { '--tag', "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_" }
 
-    $allParameters = @(
-        'build';
-        $progressPlainParameter
-        '--platform', 'linux/amd64';
-        $tagsArchAMD64;
-        $noCacheParameter,
-        '--label', 'org.opencontainers.image.description=Firebird Database',
-        '--label', 'org.opencontainers.image.source=https://github.com/FirebirdSQL/firebird-docker',
-        '--label', 'org.opencontainers.image.version=<%$TImageVersion%>',
-        '.'
-    )
-    Write-Output "`n`n----- [linux/amd64] -----"
-    Write-Output "Running: docker $allParameters"
-    exec { & docker $allParameters *>&1 }
+        $allParameters = @(
+            'build';
+            $progressPlainParameter
+            '--platform', 'linux/amd64';
+            $tagsArchAMD64;
+            $noCacheParameter,
+            '--label', 'org.opencontainers.image.description=Firebird Database',
+            '--label', 'org.opencontainers.image.source=https://github.com/FirebirdSQL/firebird-docker',
+            '--label', 'org.opencontainers.image.version=<%$TImageVersion%>',
+            '.'
+        )
+        Write-Output "`n`n----- [linux/amd64] -----"
+        Write-Output "Running: docker $allParameters"
+        exec { & docker $allParameters *>&1 }
+    }
 
-    if ($BUILDER_HAS_ARCH_ARM64) {
+    if (($targetArch -eq 'arm64' -or -not $targetArch) -and $BUILDER_HAS_ARCH_ARM64) {
+        $tagsArchARM64 = $BUILDER_IMAGE_TAGS | ForEach-Object { '--tag', "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_" }
+
         $allParameters = @(
             'build';
             $progressPlainParameter
@@ -55,6 +62,7 @@ task Build {
 task Test Build, {
     Write-Build Magenta "----- [$BUILDER_IMAGE_VERSION] ---------------------"
     $tag = $BUILDER_IMAGE_TAGS[0]
+    $targetArch = $env:TARGET_ARCH
 
     if ($TestFilter) {
         Write-Verbose "Running single test '$TestFilter'..."
@@ -63,18 +71,36 @@ task Test Build, {
         $TestFilter = '*'
     }
 
-    $env:FULL_IMAGE_NAME = "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:${tag}"
-    Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
-    Invoke-Build $TestFilter image.tests.ps1
+    if ($targetArch -eq 'amd64' -or -not $targetArch) {
+        $env:FULL_IMAGE_NAME = "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:${tag}"
+        Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
+        Invoke-Build $TestFilter image.tests.ps1
+    }
 
-    if ($BUILDER_HAS_ARCH_ARM64) {
+    if (($targetArch -eq 'arm64' -or -not $targetArch) -and $BUILDER_HAS_ARCH_ARM64) {
         $env:FULL_IMAGE_NAME = "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:${tag}"
         Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
         Invoke-Build $TestFilter image.tests.ps1
     }
 }
 
-# Synopsis: Publish image.
+# Synopsis: Publish architecture-specific image.
+task PublishArchSpecificImage Build, {
+    Write-Build Magenta "----- [$BUILDER_IMAGE_VERSION] ---------------------"
+    $targetArch = $env:TARGET_ARCH
+
+    $BUILDER_IMAGE_TAGS | ForEach-Object {
+        if ($targetArch -eq 'amd64' -or -not $targetArch) {
+            docker push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-amd64:$_"
+        }
+
+        if (($targetArch -eq 'arm64' -or -not $targetArch) -and $BUILDER_HAS_ARCH_ARM64) {
+            docker push "$BUILDER_IMAGE_PREFIX/${BUILDER_IMAGE_NAME}-arm64:$_"
+        }
+    }
+}
+
+# Synopsis: Publish image (legacy - creates manifests).
 task Publish Build, {
     Write-Build Magenta "----- [$BUILDER_IMAGE_VERSION] ---------------------"
 

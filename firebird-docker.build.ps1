@@ -380,5 +380,65 @@ task Publish {
     Build-Parallel $builds
 }
 
+# Synopsis: Publish architecture-specific images (for matrix builds).
+task PublishArchSpecificImage {
+    $PSStyle.OutputRendering = 'PlainText'
+    $logFolder = Join-Path $outputFolder 'logs'
+    $targetArch = $env:TARGET_ARCH
+    
+    $builds = Get-ChildItem "$outputFolder/**/image.build.ps1" -Recurse | ForEach-Object {
+        $version = $_.Directory.Parent.Name
+        $variant = $_.Directory.Name
+        $taskName = "PublishArchSpecificImage"
+        @{
+            File = $_.FullName
+            Task = $taskName
+            Log = (Join-Path $logFolder "$taskName-$version-$variant-$targetArch.log")
+        }
+    }
+    Build-Parallel $builds
+}
+
+# Synopsis: Create and push multi-architecture manifests.
+task CreateManifests FilteredAssets, {
+    Write-Build Green "Creating multi-architecture manifests..."
+    
+    $assets | ForEach-Object {
+        $asset = $_
+        
+        # Check if ARM64 is available for this asset
+        $hasArm64 = ($asset.releases.arm64.url -ne $null)
+        
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            $tags = $asset.tags.$distribution
+            
+            # Skip ARM64 for bullseye and jammy (as per original logic)
+            $supportsArm64 = $hasArm64 -and $distribution -ne 'bullseye' -and $distribution -ne 'jammy'
+            
+            $tags | ForEach-Object {
+                $tag = $_
+                $amd64Image = "firebirdsql/firebird-amd64:$tag"
+                $arm64Image = "firebirdsql/firebird-arm64:$tag"
+                $manifestImage = "firebirdsql/firebird:$tag"
+                
+                Write-Output "Creating manifest for $manifestImage"
+                
+                if ($supportsArm64) {
+                    # Create multi-arch manifest
+                    exec { docker manifest create --amend $manifestImage $amd64Image $arm64Image }
+                    exec { docker manifest annotate $manifestImage $amd64Image --os linux --arch amd64 }
+                    exec { docker manifest annotate $manifestImage $arm64Image --os linux --arch arm64 }
+                    exec { docker manifest push $manifestImage }
+                } else {
+                    # Create single-arch manifest (just tag the amd64 image)
+                    exec { docker image tag $amd64Image $manifestImage }
+                    exec { docker push $manifestImage }
+                }
+            }
+        }
+    }
+}
+
 # Synopsis: Default task.
 task . Build

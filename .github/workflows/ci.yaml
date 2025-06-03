@@ -28,9 +28,6 @@ jobs:
         with:
           fetch-depth: 10
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Install tools
         shell: pwsh
         run: |
@@ -38,11 +35,15 @@ jobs:
 
       - name: Build
         shell: pwsh
+        env:
+          TARGET_ARCH: amd64
         run: |
           Invoke-Build
 
       - name: Test
         shell: pwsh
+        env:
+          TARGET_ARCH: amd64
         run: |
           Invoke-Build Test
 
