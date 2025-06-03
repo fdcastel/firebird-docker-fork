@@ -39,12 +39,14 @@ jobs:
       - name: Build (filtered)
         shell: pwsh
         run: |
-          Invoke-Build -Verbose -VersionFilter 3
+          Invoke-Build -Verbose -VersionFilter 4.0.5 -DistributionFilter jammy
+          Invoke-Build -Verbose -VersionFilter 3.0.12 -DistributionFilter jammy
 
       - name: Test (filtered)
         shell: pwsh
         run: |
-          Invoke-Build Test -Verbose -VersionFilter 3 -TestFilter TZ_can_change_system_timezone
+          Invoke-Build Test -Verbose -VersionFilter 4.0.5 -DistributionFilter jammy -TestFilter TZ_can_change_system_timezone
+          Invoke-Build Test -Verbose -VersionFilter 3.0.12 -DistributionFilter jammy -TestFilter TZ_can_change_system_timezone
 
       - name: Upload logs
         uses: actions/upload-artifact@v4

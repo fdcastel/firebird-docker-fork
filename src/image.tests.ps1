@@ -384,8 +384,16 @@ task Can_init_db_with_scripts {
 }
 
 task TZ_can_change_system_timezone {
+    Write-Output '----- [ HOST ] ----------'
+    timedatectl status
+    Write-Output '-----------------------------------------'
+    
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb' {
         param($cId)
+
+        Write-Output '----- [ 1st container ] ----------'
+        timedatectl status
+        Write-Output '-----------------------------------------'
 
         $expected = [DateTime]::Now.ToUniversalTime()
 
@@ -399,6 +407,10 @@ task TZ_can_change_system_timezone {
 
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'TZ=America/Los_Angeles' {
         param($cId)
+
+        Write-Output '----- [ 2nd container ] ----------'
+        timedatectl status
+        Write-Output '-----------------------------------------'
 
         $tz = Get-TimeZone -id 'America/Los_Angeles'
 
