@@ -385,6 +385,7 @@ task Can_init_db_with_scripts {
 
 task TZ_can_change_system_timezone {
     Write-Output '----- [ HOST ] ----------'
+    apt policy tzdata
     timedatectl status
     Write-Output '-----------------------------------------'
     
@@ -392,6 +393,7 @@ task TZ_can_change_system_timezone {
         param($cId)
 
         Write-Output '----- [ 1st container ] ----------'
+        apt policy tzdata
         timedatectl status
         Write-Output '-----------------------------------------'
 
@@ -409,6 +411,7 @@ task TZ_can_change_system_timezone {
         param($cId)
 
         Write-Output '----- [ 2nd container ] ----------'
+        apt policy tzdata
         timedatectl status
         Write-Output '-----------------------------------------'
 
