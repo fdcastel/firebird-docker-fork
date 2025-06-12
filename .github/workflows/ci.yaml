@@ -36,15 +36,43 @@ jobs:
         run: |
           Install-Module InvokeBuild -Force
 
-      - name: Build
+      - name: Build (filtered)
         shell: pwsh
         run: |
-          Invoke-Build
+          Invoke-Build -Verbose -VersionFilter 4.0.5 -DistributionFilter bookworm
+          Invoke-Build -Verbose -VersionFilter 4.0.5 -DistributionFilter bullseye
+          Invoke-Build -Verbose -VersionFilter 4.0.5 -DistributionFilter jammy
+          Invoke-Build -Verbose -VersionFilter 3.0.12 -DistributionFilter bookworm
+          Invoke-Build -Verbose -VersionFilter 3.0.12 -DistributionFilter bullseye
+          Invoke-Build -Verbose -VersionFilter 3.0.12 -DistributionFilter jammy
+          Invoke-Build -Verbose -VersionFilter 3.0.11 -DistributionFilter bookworm
+          Invoke-Build -Verbose -VersionFilter 3.0.11 -DistributionFilter bullseye
+          Invoke-Build -Verbose -VersionFilter 3.0.11 -DistributionFilter jammy
+          Invoke-Build -Verbose -VersionFilter 3.0.10 -DistributionFilter bookworm
+          Invoke-Build -Verbose -VersionFilter 3.0.10 -DistributionFilter bullseye
+          Invoke-Build -Verbose -VersionFilter 3.0.10 -DistributionFilter jammy
+          Invoke-Build -Verbose -VersionFilter 3.0.9 -DistributionFilter bookworm
+          Invoke-Build -Verbose -VersionFilter 3.0.9 -DistributionFilter bullseye
+          Invoke-Build -Verbose -VersionFilter 3.0.9 -DistributionFilter jammy
 
-      - name: Test
+      - name: Test (filtered)
         shell: pwsh
         run: |
-          Invoke-Build Test
+          Invoke-Build Test -Verbose -VersionFilter 4.0.5 -DistributionFilter bookworm
+          Invoke-Build Test -Verbose -VersionFilter 4.0.5 -DistributionFilter bullseye
+          Invoke-Build Test -Verbose -VersionFilter 4.0.5 -DistributionFilter jammy
+          Invoke-Build Test -Verbose -VersionFilter 3.0.12 -DistributionFilter bookworm
+          Invoke-Build Test -Verbose -VersionFilter 3.0.12 -DistributionFilter bullseye
+          Invoke-Build Test -Verbose -VersionFilter 3.0.12 -DistributionFilter jammy
+          Invoke-Build Test -Verbose -VersionFilter 3.0.11 -DistributionFilter bookworm
+          Invoke-Build Test -Verbose -VersionFilter 3.0.11 -DistributionFilter bullseye
+          Invoke-Build Test -Verbose -VersionFilter 3.0.11 -DistributionFilter jammy
+          Invoke-Build Test -Verbose -VersionFilter 3.0.10 -DistributionFilter bookworm
+          Invoke-Build Test -Verbose -VersionFilter 3.0.10 -DistributionFilter bullseye
+          Invoke-Build Test -Verbose -VersionFilter 3.0.10 -DistributionFilter jammy
+          Invoke-Build Test -Verbose -VersionFilter 3.0.9 -DistributionFilter bookworm
+          Invoke-Build Test -Verbose -VersionFilter 3.0.9 -DistributionFilter bullseye
+          Invoke-Build Test -Verbose -VersionFilter 3.0.9 -DistributionFilter jammy
 
       - name: Upload logs
         uses: actions/upload-artifact@v4

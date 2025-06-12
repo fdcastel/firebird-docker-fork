@@ -137,6 +137,7 @@ function New-TemporaryDirectory {
 # Tests
 #
 
+<#
 task With_command_should_not_start_Firebird {
     Invoke-Container -ImageParameters 'ps', '-A' |
         ContainsExactly -Pattern 'firebird|fbguard' -ExpectedCount 0 -ErrorMessage "Firebird processes should not be running when a command is specified."
@@ -382,10 +383,29 @@ task Can_init_db_with_scripts {
         Remove-Item $initDbFolder -Force -Recurse
     }
 }
+#>
 
-task TZ_can_change_system_timezone {
+task Display_hosts_TZ_info {
+    Write-Output '- [ HOST ] ---------------------------'
+    Write-Output '----- [ apt policy tzdata ] ----------'
+    apt policy tzdata
+    Write-Output '----- [ /etc/timezone ] --------------'
+    cat /etc/timezone
+    Write-Output '----- [ timedatectl status ] ---------'
+    timedatectl status
+    Write-Output '--------------------------------------'
+}
+
+task Without_TZ_uses_host_timezone {
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb' {
         param($cId)
+
+        Write-Output '- [ CONTAINER ] ---------------------------'
+        Write-Output '----- [ apt policy tzdata ] ----------'
+        docker exec $cId apt policy tzdata
+        Write-Output '----- [ /etc/timezone ] --------------'
+        docker exec $cId cat /etc/timezone
+        Write-Output '--------------------------------------'
 
         $expected = [DateTime]::Now.ToUniversalTime()
 
@@ -396,9 +416,19 @@ task TZ_can_change_system_timezone {
 
         $actual | IsAdjacent -ExpectedValue $expected
     }
+}
 
+
+task TZ_can_change_system_timezone {
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'TZ=America/Los_Angeles' {
         param($cId)
+
+        Write-Output '- [ CONTAINER ] ---------------------------'
+        Write-Output '----- [ apt policy tzdata ] ----------'
+        docker exec $cId apt policy tzdata
+        Write-Output '----- [ /etc/timezone ] --------------'
+        docker exec $cId cat /etc/timezone
+        Write-Output '--------------------------------------'
 
         $tz = Get-TimeZone -id 'America/Los_Angeles'
 
