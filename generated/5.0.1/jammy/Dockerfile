@@ -41,6 +41,7 @@ RUN set -eux; \
         libtommath1 \
         netbase \
         procps \
+        tzdata \
         ca-certificates \
         curl; \
     \
