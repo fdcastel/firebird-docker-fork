@@ -1,0 +1,75 @@
+# Architecture Decisions
+
+Decisions made during the v2 rewrite, with rationale.
+
+## D-001: Single Dockerfile.template
+
+**Decision:** Replace 4 per-distro templates with a single parameterized `src/Dockerfile.template`.
+
+**Rationale:** The old templates were nearly identical, differing only in base image, ICU package, and extra packages. Distro-specific config is now in `assets.json` `config.distros` and injected via `{{VAR}}` placeholders.
+
+## D-002: Safe template expansion
+
+**Decision:** Replace `Expand-Template` (which used `$ExecutionContext.InvokeCommand.ExpandString`) with `{{VAR}}` string replacement.
+
+**Rationale:** `ExpandString` evaluates arbitrary PowerShell expressions, creating a code injection risk. The new `Expand-TemplateFile` function only replaces `{{KEY}}` with values from a hashtable — no expression evaluation.
+
+## D-003: Tag algorithm
+
+**Decision:** Deterministic tag generation via `Get-ImageTags` function with parameters: Version, Distro, IsLatestOfMajor, IsLatestOverall, DefaultDistro.
+
+**Tags produced:**
+- Always: `{version}-{distro}` (e.g. `5.0.3-bookworm`)
+- If latest of major: `{major}-{distro}` (e.g. `5-bookworm`)
+- If latest overall: `{distro}` (e.g. `bookworm`)
+- Default distro only: `{version}`, `{major}`, `latest`
+
+**Rationale:** Every image has a fully-qualified immutable tag. The `-{distro}` suffix (Issue #34) enables pulling specific OS variants. Only the default distro gets bare tags to avoid confusion.
+
+## D-004: Tini as PID 1
+
+**Decision:** Install `tini` in the image and use `ENTRYPOINT ["tini", "--"]` instead of running entrypoint.sh as PID 1.
+
+**Rationale:** Shell scripts don't handle signals properly as PID 1 (no zombie reaping, inconsistent SIGTERM forwarding). Tini is the standard solution, weighing ~20KB.
+
+## D-005: STOPSIGNAL SIGTERM
+
+**Decision:** Set `STOPSIGNAL SIGTERM` in the Dockerfile.
+
+**Rationale:** Firebird's fbguard/firebird processes handle SIGTERM for graceful shutdown. Docker's default is also SIGTERM, but being explicit documents the intent.
+
+## D-006: SQL injection prevention in entrypoint.sh
+
+**Decision:** Escape single quotes in passwords via `escape_sql_string()` before interpolating into SQL.
+
+**Rationale:** Passwords like `it's_me` would break SQL syntax or enable injection. The function doubles single quotes (`'` → `''`), which is the standard SQL escape.
+
+## D-007: blockedVariants in assets.json
+
+**Decision:** Use a `blockedVariants` config map to exclude incompatible version+distro combinations (e.g. FB3 on Noble).
+
+**Rationale:** Firebird 3 depends on `libncurses5`, which was removed from Ubuntu Noble. Rather than special-casing in code, we declare blocked combinations in config.
+
+## D-008: Fork CI scope
+
+**Decision:** Forks build only the latest version + default distro. Full matrix runs on the official repo.
+
+**Rationale:** Building all 60+ images on every fork push wastes CI minutes. A single latest image provides sufficient confidence for PR work.
+
+## D-009: No QEMU in CI
+
+**Decision:** Build only the host architecture locally and in CI. Multi-arch manifests are created during publish using native runners.
+
+**Rationale:** QEMU builds are 5-10x slower and unreliable. When ARM64 runners are available, they build natively.
+
+## D-010: PSFirebird for release discovery
+
+**Decision:** Use the `PSFirebird` PowerShell module (`Find-FirebirdRelease`, `Find-FirebirdSnapshotRelease`) instead of custom GitHub API calls.
+
+**Rationale:** Centralizes Firebird release parsing, SHA256 verification, and snapshot discovery. Published on PSGallery as `PSFirebird` v1.0.0+.
+
+## D-011: Snapshot images
+
+**Decision:** Daily snapshot builds from `master` (FB6) and `v5.0-release` branches, tagged as `{major}-snapshot`.
+
+**Rationale:** Pre-release testing is valuable for the community. Snapshot tags are clearly distinguished and never collide with release tags.
