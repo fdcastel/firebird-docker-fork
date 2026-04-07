@@ -39,7 +39,7 @@ jobs:
       is-official: ${{ steps.scope.outputs.is-official }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Determine build scope
         id: scope
@@ -81,7 +81,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install tools
         shell: pwsh
