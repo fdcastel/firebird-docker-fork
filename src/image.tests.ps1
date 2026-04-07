@@ -214,12 +214,12 @@ task FIREBIRD_DATABASE_can_create_database_with_unicode_characters {
 }
 
 task FIREBIRD_DATABASE_PAGE_SIZE_can_set_page_size_on_database_creation {
-    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_DATABASE_PAGE_SIZE=4096' {
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_DATABASE_PAGE_SIZE=8192' {
         param($cId)
 
         'SET LIST ON; SELECT mon$page_size FROM mon$database;' |
             docker exec -i $cId isql -b -q /var/lib/firebird/data/test.fdb |
-                Contains -Pattern 'MON\$PAGE_SIZE(\s+)4096' -ErrorMessage "Expected database page size to be 4096."
+                Contains -Pattern 'MON\$PAGE_SIZE(\s+)8192' -ErrorMessage "Expected database page size to be 8192."
     }
 
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_DATABASE_PAGE_SIZE=16384' {
@@ -319,12 +319,14 @@ task FIREBIRD_USE_LEGACY_AUTH_enables_legacy_auth {
 }
 
 task FIREBIRD_CONF_can_change_any_setting {
-    Use-Container -Parameters '-e', 'FIREBIRD_CONF_DefaultDbCachePages=64K', '-e', 'FIREBIRD_CONF_DefaultDbCachePages=64K', '-e', 'FIREBIRD_CONF_FileSystemCacheThreshold=100M' {
+    # DefaultDbCachePages and TempCacheLimit exist in all supported Firebird versions (3, 4, 5, 6).
+    # FileSystemCacheThreshold was removed in Firebird 6 so we intentionally avoid it.
+    Use-Container -Parameters '-e', 'FIREBIRD_CONF_DefaultDbCachePages=64K', '-e', 'FIREBIRD_CONF_TempCacheLimit=100M' {
         param($cId)
 
         $logs = docker logs $cId
         $logs | Contains -Pattern "DefaultDbCachePages = 64K" -ErrorMessage "Expected log message 'DefaultDbCachePages = 64K'."
-        $logs | Contains -Pattern "FileSystemCacheThreshold = 100M" -ErrorMessage "Expected log message 'FileSystemCacheThreshold = 100M'."
+        $logs | Contains -Pattern "TempCacheLimit = 100M" -ErrorMessage "Expected log message 'TempCacheLimit = 100M'."
     }
 }
 
@@ -539,5 +541,6 @@ task Tag_correctness_via_docker_inspect {
     $labels = docker inspect --format '{{json .Config.Labels}}' $env:FULL_IMAGE_NAME | ConvertFrom-Json
     $version = $labels.'org.opencontainers.image.version'
     assert ($null -ne $version) "Expected 'org.opencontainers.image.version' label to be set."
-    assert ($version -match '^\d+\.\d+\.\d+$') "Expected version label '$version' to match semantic version pattern."
+    # Accept either a semver release (e.g. '5.0.3') or a snapshot tag (e.g. '5-snapshot', '6-snapshot')
+    assert ($version -match '^\d+\.\d+\.\d+$' -or $version -match '^\d+-snapshot$') "Expected version label '$version' to be semver or snapshot format."
 }
