@@ -74,6 +74,30 @@ Invoke-Build Test -TestFilter "FIREBIRD_USER_can_create_user"
 Invoke-Build Test -VersionFilter "5" -DistributionFilter "noble"
 ```
 
+### Testing published registry images
+
+Use `Test-Published` to run the full test suite against images already pushed to a registry (the same final images end users pull). Requires `-Registry`.
+
+```bash
+# Test all images published to a fork's ghcr.io registry
+Invoke-Build Test-Published -Registry "ghcr.io/myusername"
+
+# Narrow down to a specific version + distro
+Invoke-Build Test-Published -Registry "ghcr.io/myusername" -VersionFilter "5.0.3" -DistributionFilter "bookworm"
+
+# Test the official Docker Hub images
+Invoke-Build Test-Published -Registry "firebirdsql"
+```
+
+Unlike `Test` (which tests locally built arch-specific staging images), `Test-Published` pulls and tests the final multi-arch manifest — exactly what a user would run.
+
+For snapshot images (not in `assets.json`), set `FULL_IMAGE_NAME` directly:
+
+```bash
+$env:FULL_IMAGE_NAME = "ghcr.io/myusername/firebird:6-snapshot"
+Invoke-Build * ./src/image.tests.ps1
+```
+
 ### Tag unit tests
 
 ```bash

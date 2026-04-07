@@ -354,6 +354,51 @@ task Test FilteredAssets, {
     }
 }
 
+# Synopsis: Test published images pulled directly from a registry (requires -Registry).
+# Unlike Test (which uses locally built arch-specific images), this task tests the final
+# published images — the same ones end users pull.
+#
+# Examples:
+#   Invoke-Build Test-Published -Registry 'ghcr.io/myusername'
+#   Invoke-Build Test-Published -Registry 'ghcr.io/myusername' -VersionFilter '5.0.3' -DistributionFilter 'bookworm'
+#   Invoke-Build Test-Published -Registry 'firebirdsql'
+task Test-Published FilteredAssets, {
+    $imagePrefix = $script:imagePrefix
+    $imageName = 'firebird'
+    $testFile = './src/image.tests.ps1'
+
+    if (-not $imagePrefix) {
+        Write-Error "Use -Registry to specify which registry to test. Example: Invoke-Build Test-Published -Registry 'ghcr.io/myusername'"
+        exit 1
+    }
+
+    if ($TestFilter) {
+        Write-Verbose "Running single test '$TestFilter'..."
+    } else {
+        Write-Verbose "Running all tests..."
+        $TestFilter = '*'
+    }
+
+    $assets | ForEach-Object {
+        $asset = $_
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            # Use the most-specific tag (first in list, e.g. '5.0.3-bookworm') to avoid
+            # accidentally re-testing the same image under an alias tag.
+            $tag = $asset.tags.$distribution | Select-Object -First 1
+
+            Write-Build Magenta "----- [$($asset.version) / $distribution] -----"
+
+            $env:FULL_IMAGE_NAME = "$imagePrefix/${imageName}:$tag"
+            Write-Build Cyan "  Pulling $($env:FULL_IMAGE_NAME)..."
+            docker pull $env:FULL_IMAGE_NAME *>&1 | Select-String 'Status:|Error' | Write-Build DarkGray
+            Invoke-Build $TestFilter $testFile
+        }
+    }
+}
+
+
 # Synopsis: Retag and push images using the final name (no -arch suffix). Use for single-arch publishing.
 # Produces only one package (e.g. ghcr.io/owner/firebird) with no staging intermediates.
 task Publish-Direct FilteredAssets, {
