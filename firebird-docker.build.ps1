@@ -5,7 +5,10 @@ param(
     [string]$TestFilter,          # Filter by test name (e.g., 'FIREBIRD_USER_can_create_user'). Used only in the 'Test' task.
 
     [ValidateSet('master', 'v5.0-release', 'v4.0')]
-    [string]$Branch               # Snapshot branch. Used only in the 'Build-Snapshot' task.
+    [string]$Branch,              # Snapshot branch. Used only in the 'Build-Snapshot' task.
+
+    [string]$Registry             # Image registry/owner prefix. Defaults to 'firebirdsql' (Docker Hub).
+                                  # Override for forks: e.g. 'ghcr.io/myusername'
 )
 
 #
@@ -13,6 +16,9 @@ param(
 #
 
 $outputFolder = './generated'
+
+# Effective image prefix: Registry overrides the default Docker Hub org
+$script:imagePrefix = if ($Registry) { $Registry } else { 'firebirdsql' }
 
 # Source shared functions
 . "$PSScriptRoot/src/functions.ps1"
@@ -266,7 +272,7 @@ task Prepare FilteredAssets, {
 task Build Prepare, {
     $PSStyle.OutputRendering = 'PlainText'
     $config = $script:assetsData.config
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
     # Detect host architecture
@@ -318,7 +324,7 @@ task Build Prepare, {
 
 # Synopsis: Run all tests (can be filtered using command-line options).
 task Test FilteredAssets, {
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
     $testFile = './src/image.tests.ps1'
 
@@ -350,7 +356,7 @@ task Test FilteredAssets, {
 
 # Synopsis: Publish arch-specific images (run on each arch runner separately).
 task Publish-Arch FilteredAssets, {
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
     # Detect host architecture
@@ -375,7 +381,7 @@ task Publish-Arch FilteredAssets, {
 
 # Synopsis: Create and push multi-arch manifests (run once after all arch builds complete).
 task Publish-Manifests FilteredAssets, {
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
     $assets | ForEach-Object {
@@ -416,7 +422,7 @@ task Publish-Manifests FilteredAssets, {
 
 # Synopsis: Publish all images (single-machine workflow: push + manifest creation).
 task Publish FilteredAssets, {
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
     $assets | ForEach-Object {
@@ -470,7 +476,7 @@ task Build-Snapshot LoadAssets, {
     Import-Module PSFirebird -MinimumVersion '1.0.0'
 
     $PSStyle.OutputRendering = 'PlainText'
-    $imagePrefix = 'firebirdsql'
+    $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
     $defaultDistro = 'bookworm'
 
