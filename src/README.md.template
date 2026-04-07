@@ -21,6 +21,31 @@ Docker images for Firebird Database.
 > _Firebird 3 does not have an image for Ubuntu 24.04 LTS (Noble Numbat) due to a dependency (`libncurses5`) missing from Ubuntu sources._
 
 
+## Snapshot (pre-release) images
+
+Pre-release builds from the Firebird development branches are available as snapshot images:
+
+| Tag | Source Branch | Description |
+|-----|---------------|-------------|
+| `6-snapshot` | `master` | Firebird 6.x development builds |
+| `5-snapshot` | `v5.0-release` | Firebird 5.x next-patch builds |
+
+> **Warning:** Snapshot images are built from unreleased code and may be unstable. They are rebuilt daily and replaced on each build. Do not use in production.
+
+```bash
+# Pull latest Firebird 6.x development snapshot
+docker pull firebirdsql/firebird:6-snapshot
+
+# Pull latest Firebird 5.x patch snapshot
+docker pull firebirdsql/firebird:5-snapshot
+```
+
+
+## Architectures
+
+Images for Firebird 5.x and later are available for both `linux/amd64` and `linux/arm64`. Firebird 3.x and 4.x images are `linux/amd64` only.
+
+
 
 # How to use this image
 
