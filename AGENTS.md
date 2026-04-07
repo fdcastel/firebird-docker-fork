@@ -48,3 +48,5 @@ Invoke-Build Build -VersionFilter 5 -DistributionFilter bookworm  # Filtered
 - `ci.yaml` — Build+test on push/PR. Forks: latest version only. Full matrix via workflow_dispatch.
 - `publish.yaml` — Official repo only. Build+test+push to Docker Hub.
 - `snapshot.yaml` — Snapshot pre-release images from FirebirdSQL/snapshots.
+
+When pushing commits, use `gh` command to monitor the workflow execution.

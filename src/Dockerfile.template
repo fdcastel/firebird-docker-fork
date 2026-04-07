@@ -28,8 +28,7 @@ RUN set -eux; \
         netbase \
         procps \
         tini \
-        {{EXTRA_PACKAGES}} \
-        ca-certificates \
+{{EXTRA_PACKAGES}}        ca-certificates \
         curl; \
     \
     # Download
