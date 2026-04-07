@@ -1,0 +1,196 @@
+name: publish-fork
+
+# Build, test and publish Docker images to GitHub Container Registry (ghcr.io).
+# - Triggers: Manual dispatch only (workflow_dispatch)
+# - Runs on: Any fork (uses built-in GITHUB_TOKEN — no extra secrets required)
+#
+# Images are published to ghcr.io/<owner>/firebird
+# Default scope: latest Firebird version + bookworm (fast, ~2 minutes)
+#
+# Usage:
+#   Go to Actions → publish-fork → Run workflow
+#   Pull with: docker pull ghcr.io/<your-username>/firebird:<tag>
+
+on:
+  workflow_dispatch:
+    inputs:
+      version-filter:
+        description: 'Version filter (e.g. 5, 5.0.3). Empty = latest only.'
+        required: false
+        type: string
+      distro-filter:
+        description: 'Distro filter (e.g. bookworm, jammy). Empty = default distro (bookworm).'
+        required: false
+        type: string
+      include-arm64:
+        description: 'Also build ARM64 images (takes ~2x longer).'
+        required: false
+        type: boolean
+        default: false
+      include-snapshots:
+        description: 'Also build and publish snapshot images (6-snapshot, 5-snapshot).'
+        required: false
+        type: boolean
+        default: false
+
+# Only one run at a time per fork.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  IMAGE_NAME: firebird
+
+jobs:
+  determine-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      version-filter: ${{ steps.scope.outputs.version-filter }}
+      distro-filter: ${{ steps.scope.outputs.distro-filter }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Determine build scope
+        id: scope
+        shell: pwsh
+        run: |
+          $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+
+          # Use input or default to latest version + default distro
+          $vf = '${{ inputs.version-filter }}'
+          $df = '${{ inputs.distro-filter }}'
+          if (-not $vf) { $vf = $assets.versions[0].version }
+          if (-not $df) { $df = $assets.config.defaultDistro }
+
+          "version-filter=$vf" >> $env:GITHUB_OUTPUT
+          "distro-filter=$df"  >> $env:GITHUB_OUTPUT
+
+          # Build arch matrix based on input
+          $includeArm64 = '${{ inputs.include-arm64 }}' -eq 'true'
+          $matrix = if ($includeArm64) {
+            '{"arch":["amd64","arm64"],"include":[{"arch":"amd64","runner":"ubuntu-latest"},{"arch":"arm64","runner":"ubuntu-24.04-arm"}]}'
+          } else {
+            '{"arch":["amd64"],"include":[{"arch":"amd64","runner":"ubuntu-latest"}]}'
+          }
+          "matrix=$matrix" >> $env:GITHUB_OUTPUT
+
+  build-and-push:
+    needs: determine-scope
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.determine-scope.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install tools
+        shell: pwsh
+        run: |
+          Install-Module InvokeBuild -Force
+          Install-Module PSFirebird -MinimumVersion '1.0.0' -Force
+
+      - name: Build
+        shell: pwsh
+        run: |
+          Invoke-Build Build `
+            -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
+            -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
+            -Registry '${{ env.REGISTRY }}'
+
+      - name: Test
+        shell: pwsh
+        run: |
+          Invoke-Build Test `
+            -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
+            -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
+            -Registry '${{ env.REGISTRY }}'
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push arch-specific images
+        shell: pwsh
+        run: |
+          Invoke-Build Publish-Arch `
+            -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
+            -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
+            -Registry '${{ env.REGISTRY }}'
+
+      - name: Build and push snapshot images
+        if: ${{ inputs.include-snapshots && matrix.arch == 'amd64' }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          foreach ($branch in @('master', 'v5.0-release')) {
+            Invoke-Build Build-Snapshot -Branch $branch -Registry '${{ env.REGISTRY }}'
+            $tag = if ($branch -eq 'master') { '6-snapshot' } else { '5-snapshot' }
+            docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
+          }
+
+  create-manifests:
+    needs: [determine-scope, build-and-push]
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install tools
+        shell: pwsh
+        run: |
+          Install-Module InvokeBuild -Force
+          Install-Module PSFirebird -MinimumVersion '1.0.0' -Force
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifests
+        shell: pwsh
+        run: |
+          Invoke-Build Publish-Manifests `
+            -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
+            -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
+            -Registry '${{ env.REGISTRY }}'
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          $vf = '${{ needs.determine-scope.outputs.version-filter }}'
+          $df = '${{ needs.determine-scope.outputs.distro-filter }}'
+          $registry = '${{ env.REGISTRY }}'
+          $imageName = '${{ env.IMAGE_NAME }}'
+
+          $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+          $filtered = $assets.versions | Where-Object { $_.version -like "$vf*" }
+          $tags = $filtered | ForEach-Object { $_.tags.$df } | Select-Object -First 5
+
+          $summary = @"
+          ## Published to GitHub Container Registry
+
+          **Registry:** ``$registry/$imageName``
+
+          ### Pull commands
+          ``````
+          $(($tags | ForEach-Object { "docker pull $registry/${imageName}:$_" }) -join "`n")
+          ``````
+
+          > Make the package public at: https://github.com/${{ github.repository_owner }}?tab=packages
+          "@
+
+          $summary >> $env:GITHUB_STEP_SUMMARY
