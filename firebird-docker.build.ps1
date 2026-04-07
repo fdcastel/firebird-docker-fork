@@ -11,35 +11,95 @@ param(
 
 $outputFolder = './generated'
 
-$defaultVariant = 'bookworm'
-
-$blockedVariants = @{'3' = @('noble') }    # Ubuntu 24.04 doesn't have libncurses5.
-
 
 
 #
 # Functions
 #
 
-function Expand-Template([Parameter(ValueFromPipeline = $true)]$Template) {
-    $evaluator = {
-        $innerTemplate = $args[0].Groups[1].Value
-        $ExecutionContext.InvokeCommand.ExpandString($innerTemplate)
+# Returns distro configuration from assets.json config section.
+function Get-DistroConfig([string]$Distro) {
+    $config = $script:assetsData.config.distros.$Distro
+    if (-not $config) {
+        throw "Unknown distro: $Distro. Valid distros: $($script:assetsData.config.distros | Get-Member -MemberType NoteProperty | ForEach-Object Name)"
     }
-    $regex = [regex]"\<\%(.*?)\%\>"
-    $regex.Replace($Template, $evaluator)
+    return $config
 }
 
-function Copy-TemplateItem([string]$Path, [string]$Destination) {
+# Returns all valid distros for a given major version (excludes blocked variants).
+function Get-ValidDistros([int]$Major) {
+    $allDistros = @($script:assetsData.config.distros | Get-Member -MemberType NoteProperty | ForEach-Object { $_.Name })
+    $blocked = $script:assetsData.config.blockedVariants."$Major"
+    if ($blocked) {
+        $allDistros = $allDistros | Where-Object { $_ -notin $blocked }
+    }
+    return $allDistros
+}
+
+# Deterministic tag generation. See DECISIONS.md for rationale.
+function Get-ImageTags {
+    param(
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$Distro,
+        [Parameter(Mandatory)][bool]$IsLatestOfMajor,
+        [Parameter(Mandatory)][bool]$IsLatestOverall,
+        [Parameter(Mandatory)][string]$DefaultDistro
+    )
+
+    $v = [version]$Version
+    $major = "$($v.Major)"
+    $tags = @()
+
+    # Always: {version}-{distro}
+    $tags += "$Version-$Distro"
+
+    # If latest of major: {major}-{distro}
+    if ($IsLatestOfMajor) {
+        $tags += "$major-$Distro"
+    }
+
+    # If latest overall: {distro}
+    if ($IsLatestOverall) {
+        $tags += $Distro
+    }
+
+    # Default distro gets additional bare tags
+    if ($Distro -eq $DefaultDistro) {
+        # Always: {version}
+        $tags += $Version
+
+        # If latest of major: {major}
+        if ($IsLatestOfMajor) {
+            $tags += $major
+        }
+
+        # If latest overall: latest
+        if ($IsLatestOverall) {
+            $tags += 'latest'
+        }
+    }
+
+    return $tags
+}
+
+# Expand a template file using {{VAR}} syntax (safe string replacement).
+function Expand-TemplateFile([string]$Path, [hashtable]$Variables) {
+    $content = Get-Content $Path -Raw -Encoding UTF8
+    foreach ($key in $Variables.Keys) {
+        $content = $content.Replace("{{$key}}", $Variables[$key])
+    }
+    return $content
+}
+
+# Write content to file with auto-generated header.
+function Write-GeneratedFile([string]$Content, [string]$Destination) {
     if (Test-Path $Destination) {
-        # File already exists: Remove readonly flag (if set).
         $outputFile = Get-Item $Destination
         $outputFile | Set-ItemProperty -Name IsReadOnly -Value $false
     }
 
-    # Add header
-    $fileExtension = $Destination.Split('.')[-1]
-    $header = if ($fileExtension -eq 'md') {
+    $fileExtension = [System.IO.Path]::GetExtension($Destination)
+    $header = if ($fileExtension -eq '.md') {
         @'
 
 [//]: # (This file was auto-generated. Do not edit. See /src.)
@@ -54,31 +114,10 @@ function Copy-TemplateItem([string]$Path, [string]$Destination) {
 '@
     }
     $header | Set-Content $Destination -Encoding UTF8
+    $Content | Add-Content $Destination -Encoding UTF8
 
-    # Expand template
-    Get-Content $Path -Raw -Encoding UTF8 |
-        Expand-Template |
-            Add-Content $Destination -Encoding UTF8
-
-    # Set readonly flag (another reminder to not edit the file)
     $outputFile = Get-Item $Destination
     $outputFile | Set-ItemProperty -Name IsReadOnly -Value $true
-}
-
-function Use-CachedResponse {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$JsonFile,
-
-        [scriptblock]$ScriptBlock
-    )
-
-    if (Test-Path $JsonFile) {
-        return Get-Content $JsonFile | ConvertFrom-Json
-    }
-
-    $result = Invoke-Command -ScriptBlock $ScriptBlock
-    return $result | ConvertTo-Json -Depth 10 | Out-File $JsonFile -Encoding utf8
 }
 
 
@@ -87,153 +126,146 @@ function Use-CachedResponse {
 # Tasks
 #
 
-# Synopsis: Rebuild "assets.json" from GitHub releases.
+# Synopsis: Rebuild "assets.json" from GitHub releases using PSFirebird.
 task Update-Assets {
-    $tempFolder = [System.IO.Path]::GetTempPath()
+    # PSFirebird is required for this task
+    if (-not (Get-Module PSFirebird -ListAvailable)) {
+        Install-Module PSFirebird -MinimumVersion '1.0.0' -Force -Scope CurrentUser
+    }
+    Import-Module PSFirebird -MinimumVersion '1.0.0'
 
-    $releasesFile = Join-Path $tempFolder 'github-releases.json'
-    $assetsFolder = Join-Path $tempFolder 'firebird-assets'
-    New-Item $assetsFolder -ItemType Directory -Force > $null
+    # Load current config section (distros, blocked variants, default distro)
+    $currentData = Get-Content -Raw -Path './assets.json' | ConvertFrom-Json
+    $config = $currentData.config
 
-    # All github releases
-    $releases = Use-CachedResponse -JsonFile $releasesFile { Invoke-RestMethod -Uri "https://api.github.com/repos/FirebirdSQL/firebird/releases" -UseBasicParsing }
+    $defaultDistro = $config.defaultDistro
+    $allDistros = $config.distros | Get-Member -MemberType NoteProperty | ForEach-Object { $_.Name }
 
-    # Ignore legacy and prerelease
-    $currentReleases = $releases | Where-Object { ($_.tag_name -like 'v*') -and (-not $_.prerelease) }
+    # Query GitHub for all Firebird releases
+    $allReleases = @()
+    foreach ($majorVersion in @(5, 4, 3)) {
+        Write-Output "Querying releases for Firebird $majorVersion..."
 
-    # Select only amd64/arm64 and non-debug assets
-    $currentAssets = $currentReleases |
-        Select-Object -Property @{ Name='version'; Expression={ [version]$_.tag_name.TrimStart("v") } },
-                                @{ Name='download_url'; Expression={ $_.assets.browser_download_url | Where-Object { ( $_ -like '*amd64*' -or $_ -like '*linux-x64*' -or $_ -like '*linux-arm64*') -and ($_ -notlike '*debug*') } } } |
-        Sort-Object -Property version -Descending
-
-    # Group by major version
-    $groupedAssets = $currentAssets |
-        Select-Object -Property @{ Name='major'; Expression={ $_.version.Major } }, 'version', 'download_url' |
-        Group-Object -Property 'major' |
-        Sort-Object -Property Name -Descending
-
-    # Get Variants
-    $dockerFiles = Get-Item './src/Dockerfile.*.template'
-    $allOtherVariants = $dockerFiles.Name |
-        Select-String -Pattern 'Dockerfile.(.+).template' |
-        ForEach-Object { $_.Matches.Groups[1].Value } |
-        Where-Object { $_ -ne $defaultVariant }
-    $allVariants = @($defaultVariant) + $otherVariants
-
-    # For each asset
-    $groupedAssets | ForEach-Object -Begin { $groupIndex = 0 } -Process {
-        # For each major version
-        $_.Group | ForEach-Object -Begin { $index = 0 } -Process {
-            $asset = $_
-
-            # Remove blocked variants
-
-            $otherVariants = $allOtherVariants | Where-Object { $_ -notin $blockedVariants."$($asset.major)" }
-            $variants = $allVariants | Where-Object { $_ -notin $blockedVariants."$($asset.major)" }
-
-            $releases = $asset.download_url | ForEach-Object {
-                $url = [uri]$_
-                $assetFileName = $url.Segments[-1]
-                $assetLocalFile = Join-Path $assetsFolder $assetFileName
-                if (-not (Test-Path $assetLocalFile)) {
-                    $ProgressPreference = 'SilentlyContinue'    # How NOT to implement a progress bar -- https://stackoverflow.com/a/43477248
-                    Invoke-WebRequest $url -OutFile $assetLocalFile
-                }
-
-                $sha256 = (Get-FileHash $assetLocalFile -Algorithm SHA256).Hash.ToLower()
-
-                if ($url -like '*arm64*') {
-                    [ordered]@{
-                        arm64 =
-                            [ordered]@{
-                                url = $url
-                                sha256 = $sha256
-                            }
-                    }
-                } else {
-                    [ordered]@{
-                        amd64 =
-                            [ordered]@{
-                                url = $url
-                                sha256 = $sha256
-                            }
-                    }
-                }
-            }
-
-            $tags = [ordered]@{}
-
-            $tags[$defaultVariant] = @("$($asset.version)")
-            $otherVariants | ForEach-Object {
-                $tags[$_] = @("$($asset.version)-$_")
-            }
-
-            if ($index -eq 0) {
-                # latest of this major version
-                $tags[$defaultVariant] = @("$($asset.major)") + $tags[$defaultVariant]
-                $otherVariants | ForEach-Object {
-                    $tags[$_] = @("$($asset.major)-$_") + $tags[$_]
-                }
-            }
-
-            if (($groupIndex -eq 0) -and ($index -eq 0)) {
-                # latest of all
-                $tags[$defaultVariant] += 'latest'
-                $otherVariants | ForEach-Object {
-                    $tags[$_] = @("$_") + $tags[$_]
-                }
-            }
-
-            Write-Output ([ordered]@{
-                'version' = "$($asset.version)"
-                'releases' = $releases
-                'tags' = $tags
-            })
-
-            $index++
+        # Find all patch versions for this major
+        $apiUrl = 'https://api.github.com/repos/FirebirdSQL/firebird/releases?per_page=100'
+        $headers = @{ 'User-Agent' = 'PSFirebird' }
+        if ($env:GITHUB_TOKEN) {
+            $headers['Authorization'] = "Bearer $($env:GITHUB_TOKEN)"
         }
-        $groupIndex++
-    } | ConvertTo-Json -Depth 10 | Out-File './assets.json' -Encoding ascii
-}
+        $releases = Invoke-RestMethod -Uri $apiUrl -Headers $headers
 
-# Synopsis: Rebuild "README.md" from "assets.json".
-task Update-Readme {
-    # For each asset
-    $assets = Get-Content -Raw -Path '.\assets.json' | ConvertFrom-Json
-    $TSupportedTags = $assets | ForEach-Object {
-        $asset = $_
+        $matchingReleases = $releases |
+            Where-Object { ($_.tag_name -like "v$majorVersion.*") -and (-not $_.prerelease) } |
+            ForEach-Object {
+                $v = [version]($_.tag_name.TrimStart('v'))
+                [PSCustomObject]@{ Version = $v; TagName = $_.tag_name }
+            } |
+            Sort-Object { $_.Version } -Descending
 
-        $version = [version]$asset.version
-        $versionFolder = Join-Path $outputFolder $version
+        foreach ($rel in $matchingReleases) {
+            $version = $rel.Version
+            if ($version -lt [version]'3.0.8') { continue }
 
-        # For each image
-        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
-            $image = $_.Name
+            Write-Output "  Processing $version..."
 
-            $TImageTags = $asset.tags.$image
-            if ($TImageTags) {
-                # https://stackoverflow.com/a/73073678
-                $TImageTags = "``{0}``" -f ($TImageTags -join "``, ``")
+            # Get amd64 release
+            $amd64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-x64'
+            $releaseInfo = [ordered]@{
+                amd64 = [ordered]@{
+                    url    = $amd64.Url
+                    sha256 = $amd64.Sha256
+                }
             }
 
-            $variantFolder = (Join-Path $versionFolder $image).Replace('\', '/')
+            # Get arm64 release (only FB5+)
+            if ($majorVersion -ge 5) {
+                try {
+                    $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
+                    $releaseInfo['arm64'] = [ordered]@{
+                        url    = $arm64.Url
+                        sha256 = $arm64.Sha256
+                    }
+                } catch {
+                    Write-Warning "  No arm64 release for $version"
+                }
+            }
 
-            Write-Output "|$TImageTags|[Dockerfile]($variantFolder/Dockerfile)|`n"
+            # If SHA-256 is null (pre-July 2025 releases), download to compute
+            foreach ($arch in @('amd64', 'arm64')) {
+                if ($releaseInfo.Contains($arch) -and -not $releaseInfo[$arch].sha256) {
+                    Write-Output "    Downloading $arch asset to compute SHA-256..."
+                    $tempFile = [System.IO.Path]::GetTempFileName()
+                    try {
+                        $ProgressPreference = 'SilentlyContinue'
+                        Invoke-WebRequest $releaseInfo[$arch].url -OutFile $tempFile
+                        $releaseInfo[$arch].sha256 = (Get-FileHash $tempFile -Algorithm SHA256).Hash.ToLower()
+                    } finally {
+                        Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+
+            $allReleases += [PSCustomObject]@{
+                Version  = $version
+                Major    = $majorVersion
+                Releases = $releaseInfo
+            }
         }
     }
 
-    Copy-TemplateItem "./src/README.md.template" './README.md'
+    # Sort: by major desc, then version desc
+    $allReleases = $allReleases | Sort-Object { $_.Major }, { $_.Version } -Descending
+
+    # Group by major to determine latest-of-major
+    $byMajor = $allReleases | Group-Object Major
+    $latestOverallVersion = $allReleases[0].Version
+
+    # Build tags
+    $versions = @()
+    foreach ($group in ($byMajor | Sort-Object Name -Descending)) {
+        $isFirstInGroup = $true
+        foreach ($rel in $group.Group) {
+            $validDistros = Get-ValidDistros -Major $rel.Major
+            $tags = [ordered]@{}
+
+            foreach ($distro in $validDistros) {
+                $distroTags = Get-ImageTags `
+                    -Version "$($rel.Version)" `
+                    -Distro $distro `
+                    -IsLatestOfMajor $isFirstInGroup `
+                    -IsLatestOverall ($rel.Version -eq $latestOverallVersion) `
+                    -DefaultDistro $defaultDistro
+                $tags[$distro] = $distroTags
+            }
+
+            $versions += [ordered]@{
+                version  = "$($rel.Version)"
+                releases = $rel.Releases
+                tags     = $tags
+            }
+
+            $isFirstInGroup = $false
+        }
+    }
+
+    # Write assets.json
+    $output = [ordered]@{
+        config   = $config
+        versions = $versions
+    }
+
+    $output | ConvertTo-Json -Depth 10 | Out-File './assets.json' -Encoding UTF8
+    Write-Output "assets.json updated with $($versions.Count) versions."
 }
 
-# Synopsis: Clean up the output folder.
-task Clean {
-    Remove-Item -Path $outputFolder -Recurse -Force -ErrorAction SilentlyContinue
+# Synopsis: Load the assets from "assets.json".
+task LoadAssets {
+    $script:assetsData = Get-Content -Raw -Path './assets.json' | ConvertFrom-Json
 }
 
-# Synopsis: Load the assets from "assets.json", optionally filtering it by command-line parameters.
-task FilteredAssets {
-    $result = Get-Content -Raw -Path '.\assets.json' | ConvertFrom-Json
+# Synopsis: Load the assets from "assets.json", optionally filtering by command-line parameters.
+task FilteredAssets LoadAssets, {
+    $result = $script:assetsData.versions
 
     # Filter assets by command-line arguments
     if ($VersionFilter) {
@@ -242,7 +274,6 @@ task FilteredAssets {
 
     if ($DistributionFilter) {
         $result = $result | Where-Object { $_.tags.$DistributionFilter -ne $null } |
-            # Remove tags that do not match the distribution filter
             Select-Object -Property 'version','releases',@{Name = 'tags'; Expression = { [PSCustomObject]@{ "$DistributionFilter" = $_.tags.$DistributionFilter } } }
     }
 
@@ -254,11 +285,41 @@ task FilteredAssets {
     $script:assets = $result
 }
 
+# Synopsis: Rebuild "README.md" from "assets.json".
+task Update-Readme LoadAssets, {
+    $assets = $script:assetsData.versions
+    $TSupportedTags = $assets | ForEach-Object {
+        $asset = $_
+        $version = [version]$asset.version
+        $versionFolder = Join-Path $outputFolder $version
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $image = $_.Name
+            $TImageTags = $asset.tags.$image
+            if ($TImageTags) {
+                $TImageTags = "``{0}``" -f ($TImageTags -join "``, ``")
+            }
+            $variantFolder = (Join-Path $versionFolder $image).Replace('\', '/')
+            Write-Output "|$TImageTags|[Dockerfile]($variantFolder/Dockerfile)|`n"
+        }
+    }
+
+    $template = Get-Content './src/README.md.template' -Raw -Encoding UTF8
+    $content = $template.Replace('{{SupportedTags}}', ($TSupportedTags -join ' '))
+    Write-GeneratedFile -Content $content -Destination './README.md'
+}
+
+# Synopsis: Clean up the output folder.
+task Clean {
+    Remove-Item -Path $outputFolder -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # Synopsis: Invoke preprocessor to generate the image source files (can be filtered using command-line options).
 task Prepare FilteredAssets, {
     # Create output folders if they do not exist
     New-Item -ItemType Directory $outputFolder -Force > $null
-    New-Item -ItemType Directory (Join-Path $outputFolder 'logs') -Force > $null
+
+    $config = $script:assetsData.config
 
     # For each asset
     $assets | ForEach-Object {
@@ -268,116 +329,169 @@ task Prepare FilteredAssets, {
         $versionFolder = Join-Path $outputFolder $version
         New-Item -ItemType Directory $versionFolder -Force > $null
 
-        # For each tag
+        # For each tag/distro
         $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
             $distribution = $_.Name
             $distributionFolder = Join-Path $versionFolder $distribution
             New-Item -ItemType Directory $distributionFolder -Force > $null
 
-            # Set variables for the template
-            $THasArchARM64 = ($asset.releases.arm64.url -ne $null -and $distribution -ne 'bullseye' -and $distribution -ne 'jammy' ?
-                '$true' : '$false')
+            $distroConfig = Get-DistroConfig -Distro $distribution
 
-            $TUrlArchAMD64 = $asset.releases.amd64.url
-            $TSha256ArchAMD64 = $asset.releases.amd64.sha256
-
-            $TUrlArchARM64 = $asset.releases.arm64.url
-            $TSha256ArchARM64 = $asset.releases.arm64.sha256
-
-            $TMajor = $version.Major
-            $TImageVersion = $version
-
-            $TImageTags = $asset.tags.$distribution
-            if ($TImageTags) {
-                # https://stackoverflow.com/a/73073678
-                $TImageTags = "'{0}'" -f ($TImageTags -join "', '")
+            # Template variables
+            $hasArm64 = ($null -ne $asset.releases.arm64)
+            $variables = @{
+                'BASE_IMAGE'        = $distroConfig.baseImage
+                'ICU_PACKAGE'       = $distroConfig.icuPackage
+                'EXTRA_PACKAGES'    = if ($distroConfig.extraPackages) { "        $($distroConfig.extraPackages) \`n" } else { '' }
+                'URL_AMD64'         = "$($asset.releases.amd64.url)"
+                'SHA256_AMD64'      = "$($asset.releases.amd64.sha256)"
+                'URL_ARM64'         = if ($hasArm64) { "$($asset.releases.arm64.url)" } else { '' }
+                'SHA256_ARM64'      = if ($hasArm64) { "$($asset.releases.arm64.sha256)" } else { '' }
+                'FIREBIRD_VERSION'  = "$($asset.version)"
+                'FIREBIRD_MAJOR'    = "$($version.Major)"
             }
 
-            # Render templates into the distribution folder
-            Copy-TemplateItem "./src/Dockerfile.$distribution.template" "$distributionFolder/Dockerfile"
+            # Render template
+            $dockerfile = Expand-TemplateFile -Path './src/Dockerfile.template' -Variables $variables
+
+            # For amd64-only versions, remove the arm64 case from the Dockerfile
+            if (-not $hasArm64) {
+                $dockerfile = $dockerfile -replace "(?ms)\s+arm64\)\s*\\.*?;;\s*\\", ''
+            }
+
+            Write-GeneratedFile -Content $dockerfile -Destination "$distributionFolder/Dockerfile"
             Copy-Item './src/entrypoint.sh' $distributionFolder
-            Copy-TemplateItem "./src/image.build.ps1.template" "$distributionFolder/image.build.ps1"
-            Copy-Item './src/image.tests.ps1' $distributionFolder
         }
     }
 }
 
 # Synopsis: Build all docker images (can be filtered using command-line options).
 task Build Prepare, {
-    $taskName = "Build"
-
     $PSStyle.OutputRendering = 'PlainText'
-    $logFolder = Join-Path $outputFolder 'logs'
+    $config = $script:assetsData.config
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
 
-    $builds = $assets | ForEach-Object {
+    # Detect host architecture
+    $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
+
+    $assets | ForEach-Object {
         $asset = $_
-
         $version = [version]$asset.version
         $versionFolder = Join-Path $outputFolder $version
 
         $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
             $distribution = $_.Name
             $distributionFolder = Join-Path $versionFolder $distribution
-            @{
-                File = "$distributionFolder/image.build.ps1"
-                Task = $taskName
-                Log = "$logFolder/$taskName-$version-$distribution.log"
+            $imageTags = $asset.tags.$distribution
+            $hasArm64 = ($null -ne $asset.releases.arm64)
 
-                # Parameters passed to Invoke-Build
-                Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+            # Build amd64
+            if ($hostArch -eq 'amd64') {
+                $tagsAmd64 = $imageTags | ForEach-Object { '--tag', "$imagePrefix/${imageName}-amd64:$_" }
+                $buildArgs = @(
+                    'build'
+                    $tagsAmd64
+                    '--label', 'org.opencontainers.image.description=Firebird Database'
+                    '--label', "org.opencontainers.image.version=$($asset.version)"
+                    '--progress=plain'
+                    $distributionFolder
+                )
+                Write-Build Cyan "----- [$($asset.version) / $distribution / amd64] -----"
+                exec { & docker $buildArgs *>&1 }
+            }
+
+            # Build arm64 (only if available and on arm64 host)
+            if ($hasArm64 -and $hostArch -eq 'arm64') {
+                $tagsArm64 = $imageTags | ForEach-Object { '--tag', "$imagePrefix/${imageName}-arm64:$_" }
+                $buildArgs = @(
+                    'build'
+                    $tagsArm64
+                    '--label', 'org.opencontainers.image.description=Firebird Database'
+                    '--label', "org.opencontainers.image.version=$($asset.version)"
+                    '--progress=plain'
+                    $distributionFolder
+                )
+                Write-Build Cyan "----- [$($asset.version) / $distribution / arm64] -----"
+                exec { & docker $buildArgs *>&1 }
             }
         }
     }
-
-    Build-Parallel $builds
 }
 
 # Synopsis: Run all tests (can be filtered using command-line options).
 task Test FilteredAssets, {
-    $taskName = "Test"
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
+    $testFile = './src/image.tests.ps1'
 
-    $PSStyle.OutputRendering = 'PlainText'
-    $logFolder = Join-Path $outputFolder 'logs'
+    # Detect host architecture
+    $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
 
-    $tests = $assets | ForEach-Object {
-        $asset = $_
-
-        $version = [version]$asset.version
-        $versionFolder = Join-Path $outputFolder $version
-
-        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
-            $distribution = $_.Name
-            $distributionFolder = Join-Path $versionFolder $distribution
-            @{
-                File = "$distributionFolder/image.build.ps1"
-                Task = $taskName
-                Log = "$logFolder/$taskName-$version-$distribution.log"
-
-                # Parameters passed to Invoke-Build
-                Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
-                TestFilter = $TestFilter
-            }
-        }
+    if ($TestFilter) {
+        Write-Verbose "Running single test '$TestFilter'..."
+    } else {
+        Write-Verbose "Running all tests..."
+        $TestFilter = '*'
     }
 
-    Build-Parallel $tests
+    $assets | ForEach-Object {
+        $asset = $_
+        $hasArm64 = ($null -ne $asset.releases.arm64)
+        $tag = $asset.tags | Get-Member -MemberType NoteProperty | Select-Object -First 1 | ForEach-Object {
+            $asset.tags.($_.Name) | Select-Object -First 1
+        }
+
+        Write-Build Magenta "----- [$($asset.version)] -----"
+
+        # Test host architecture
+        $env:FULL_IMAGE_NAME = "$imagePrefix/${imageName}-${hostArch}:${tag}"
+        Write-Verbose "  Image: $($env:FULL_IMAGE_NAME)"
+        Invoke-Build $TestFilter $testFile
+    }
 }
 
 # Synopsis: Publish all images.
-task Publish {
-    $PSStyle.OutputRendering = 'PlainText'
-    $logFolder = Join-Path $outputFolder 'logs'
-    $builds = Get-ChildItem "$outputFolder/**/image.build.ps1" -Recurse | ForEach-Object {
-        $version = $_.Directory.Parent.Name
-        $variant = $_.Directory.Name
-        $taskName = "Publish"
-        @{
-            File = $_.FullName
-            Task = $taskName
-            Log = (Join-Path $logFolder "$taskName-$version-$variant.log")
+task Publish FilteredAssets, {
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
+
+    $assets | ForEach-Object {
+        $asset = $_
+        $hasArm64 = ($null -ne $asset.releases.arm64)
+
+        Write-Build Magenta "----- [$($asset.version)] -----"
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            $imageTags = $asset.tags.$distribution
+
+            $imageTags | ForEach-Object {
+                $tag = $_
+                docker push "$imagePrefix/${imageName}-amd64:$tag"
+
+                if ($hasArm64) {
+                    docker push "$imagePrefix/${imageName}-arm64:$tag"
+
+                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-amd64:$tag" `
+                        "$imagePrefix/${imageName}-arm64:$tag"
+
+                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-amd64:$tag" --os linux --arch amd64
+                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-arm64:$tag" --os linux --arch arm64
+
+                    docker manifest push "$imagePrefix/${imageName}:$tag"
+                }
+                else {
+                    docker image tag "$imagePrefix/${imageName}-amd64:$tag" `
+                        "$imagePrefix/${imageName}:$tag"
+                    docker push "$imagePrefix/${imageName}:$tag"
+                }
+            }
         }
     }
-    Build-Parallel $builds
 }
 
 # Synopsis: Default task.
