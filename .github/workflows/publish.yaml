@@ -55,6 +55,8 @@ jobs:
           Invoke-Build Test
 
       - name: Run tag unit tests
+        # Verifies Get-ImageTags produces correct Docker tags (pure logic, no Docker required).
+        # Tag logic is arch-independent — run once on amd64 to avoid duplication.
         if: matrix.arch == 'amd64'
         shell: pwsh
         run: |

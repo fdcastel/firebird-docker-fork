@@ -45,7 +45,7 @@ Invoke-Build Build -VersionFilter 5 -DistributionFilter bookworm  # Filtered
 - `AGENTS.md` — This file
 
 ## CI/CD
-- `ci.yaml` — Build+test on push/PR. Forks: latest version only. Full matrix via workflow_dispatch.
+- `ci.yaml` — Build+test on push/PR. Full matrix (amd64 + arm64) on all repos. Filtered via workflow_dispatch inputs.
 - `publish.yaml` — Official repo only. Build+test+push to Docker Hub.
 - `snapshot.yaml` — Snapshot pre-release images from FirebirdSQL/snapshots.
 

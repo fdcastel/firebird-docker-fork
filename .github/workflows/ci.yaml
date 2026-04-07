@@ -3,9 +3,6 @@ name: ci
 # Build and run all tests.
 # - Triggers: All pushes and pull requests on any branch.
 # - Runs on: All repositories (including forks)
-#
-# Forks build only the latest version + default distro on amd64 (fast feedback).
-# Full matrix (including ARM64) runs on workflow_dispatch or the official repo.
 
 on:
   push:
@@ -31,41 +28,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  determine-scope:
-    runs-on: ubuntu-latest
-    outputs:
-      version-filter: ${{ steps.scope.outputs.version-filter }}
-      distro-filter: ${{ steps.scope.outputs.distro-filter }}
-      is-official: ${{ steps.scope.outputs.is-official }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Determine build scope
-        id: scope
-        shell: pwsh
-        run: |
-          $vf = '${{ inputs.version-filter }}'
-          $df = '${{ inputs.distro-filter }}'
-
-          $isOfficial = '${{ github.repository }}' -eq 'FirebirdSQL/firebird-docker'
-
-          # For forks (non-dispatch), build only latest version + default distro
-          if (-not $vf -and '${{ github.event_name }}' -ne 'workflow_dispatch') {
-            if (-not $isOfficial) {
-              $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
-              $vf = $assets.versions[0].version
-              $df = $assets.config.defaultDistro
-            }
-          }
-
-          "version-filter=$vf" >> $env:GITHUB_OUTPUT
-          "distro-filter=$df" >> $env:GITHUB_OUTPUT
-          "is-official=$($isOfficial.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-
   build-and-test:
     if: ${{ !(github.repository == 'FirebirdSQL/firebird-docker' && github.ref == 'refs/heads/master') }}
-    needs: determine-scope
     strategy:
       fail-fast: false
       matrix:
@@ -75,9 +39,6 @@ jobs:
             runner: ubuntu-latest
           - arch: arm64
             runner: ubuntu-24.04-arm
-        exclude:
-          # Forks: skip arm64 to save CI minutes
-          - arch: ${{ needs.determine-scope.outputs.is-official != 'true' && 'arm64' || 'none' }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -93,19 +54,21 @@ jobs:
         shell: pwsh
         run: |
           $params = @{}
-          if ('${{ needs.determine-scope.outputs.version-filter }}') { $params['VersionFilter'] = '${{ needs.determine-scope.outputs.version-filter }}' }
-          if ('${{ needs.determine-scope.outputs.distro-filter }}') { $params['DistributionFilter'] = '${{ needs.determine-scope.outputs.distro-filter }}' }
+          if ('${{ inputs.version-filter }}') { $params['VersionFilter'] = '${{ inputs.version-filter }}' }
+          if ('${{ inputs.distro-filter }}') { $params['DistributionFilter'] = '${{ inputs.distro-filter }}' }
           Invoke-Build Build @params
 
       - name: Test
         shell: pwsh
         run: |
           $params = @{}
-          if ('${{ needs.determine-scope.outputs.version-filter }}') { $params['VersionFilter'] = '${{ needs.determine-scope.outputs.version-filter }}' }
-          if ('${{ needs.determine-scope.outputs.distro-filter }}') { $params['DistributionFilter'] = '${{ needs.determine-scope.outputs.distro-filter }}' }
+          if ('${{ inputs.version-filter }}') { $params['VersionFilter'] = '${{ inputs.version-filter }}' }
+          if ('${{ inputs.distro-filter }}') { $params['DistributionFilter'] = '${{ inputs.distro-filter }}' }
           Invoke-Build Test @params
 
       - name: Run tag unit tests
+        # Verifies Get-ImageTags produces correct Docker tags (pure logic, no Docker required).
+        # Tag logic is arch-independent — run once on amd64 to avoid duplication.
         if: matrix.arch == 'amd64'
         shell: pwsh
         run: |

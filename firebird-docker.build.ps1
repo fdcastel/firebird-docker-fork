@@ -208,7 +208,7 @@ task Update-Readme LoadAssets, {
     }
 
     $template = Get-Content './src/README.md.template' -Raw -Encoding UTF8
-    $content = $template.Replace('{{SupportedTags}}', ($TSupportedTags -join ' '))
+    $content = $template.Replace('{{SupportedTags}}', ($TSupportedTags -join ''))
     Write-GeneratedFile -Content $content -Destination './README.md'
 }
 

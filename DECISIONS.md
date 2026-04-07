@@ -50,11 +50,11 @@ Decisions made during the v2 rewrite, with rationale.
 
 **Rationale:** Firebird 3 depends on `libncurses5`, which was removed from Ubuntu Noble. Rather than special-casing in code, we declare blocked combinations in config.
 
-## D-008: Fork CI scope
+## D-008: Uniform CI scope
 
-**Decision:** Forks build only the latest version + default distro. Full matrix runs on the official repo.
+**Decision:** All repositories (forks and official) run the same full build matrix on every push/PR, including both amd64 and arm64.
 
-**Rationale:** Building all 60+ images on every fork push wastes CI minutes. A single latest image provides sufficient confidence for PR work.
+**Rationale:** Consistent CI ensures contributors catch the same failures as the official repo. Public repos have unlimited GitHub Actions minutes, so fork-scoping provides no meaningful savings while adding code complexity.
 
 ## D-009: No QEMU in CI
 
