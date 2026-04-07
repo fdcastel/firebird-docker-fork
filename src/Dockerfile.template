@@ -1,23 +1,13 @@
 # Best practices for Dockerfile instructions
 #   https://docs.docker.com/develop/develop-images/instructions/
 
-FROM ubuntu:noble
+FROM {{BASE_IMAGE}}
 
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-ARG ARCH_ARM64
-
-# ARM64 arch
-ENV FIREBIRD_RELEASE_URL=${ARCH_ARM64:+<%$TUrlArchARM64%>}
-ENV FIREBIRD_RELEASE_SHA256=${ARCH_ARM64:+<%$TSha256ArchARM64%>}
-
-# AMD64 arch
-ENV FIREBIRD_RELEASE_URL=${FIREBIRD_RELEASE_URL:-<%$TUrlArchAMD64%>}
-ENV FIREBIRD_RELEASE_SHA256=${FIREBIRD_RELEASE_SHA256:-<%$TSha256ArchAMD64%>}
-
-ENV FIREBIRD_VERSION=<%$TImageVersion%>
-ENV FIREBIRD_MAJOR=<%$TMajor%>
+ENV FIREBIRD_VERSION={{FIREBIRD_VERSION}}
+ENV FIREBIRD_MAJOR={{FIREBIRD_MAJOR}}
 
 # https://linuxcommand.org/lc3_man_pages/seth.html
 #   -e  Exit immediately if a command exits with a non-zero status.
@@ -28,24 +18,38 @@ ENV FIREBIRD_MAJOR=<%$TMajor%>
 #   FB 3.0 uses libncurses5: https://github.com/FirebirdSQL/firebird/issues/6418#issuecomment-826245785
 RUN set -eux; \
     apt-get update; \
-    # Install prerequisites + curl, ca-certificates for download
+    # Install prerequisites + tini + curl/ca-certificates for download
     apt-get install -y --no-install-recommends \
         libatomic1 \
-        libicu74 \
+        {{ICU_PACKAGE}} \
         $([ $FIREBIRD_MAJOR -eq 3 ] && echo 'libncurses5' || echo 'libncurses6') \
         libtomcrypt1 \
         libtommath1 \
         netbase \
         procps \
+        tini \
+        {{EXTRA_PACKAGES}} \
         ca-certificates \
         curl; \
     \
     # Download
+    ARCH=$(dpkg --print-architecture); \
+    case "$ARCH" in \
+        amd64) \
+            FIREBIRD_URL='{{URL_AMD64}}'; \
+            FIREBIRD_SHA256='{{SHA256_AMD64}}'; \
+            ;; \
+        arm64) \
+            FIREBIRD_URL='{{URL_ARM64}}'; \
+            FIREBIRD_SHA256='{{SHA256_ARM64}}'; \
+            ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac; \
     mkdir -p /tmp/firebird_install; \
-    echo "Downloading Firebird from $FIREBIRD_RELEASE_URL"; \
-    curl -fSL "$FIREBIRD_RELEASE_URL" -o /tmp/firebird_install/firebird-bundle.tar.gz; \
-    echo "Verifying checksum: $FIREBIRD_RELEASE_SHA256 for downloaded file"; \
-    echo "$FIREBIRD_RELEASE_SHA256 /tmp/firebird_install/firebird-bundle.tar.gz" | sha256sum -c -; \
+    echo "Downloading Firebird from $FIREBIRD_URL"; \
+    curl -fSL "$FIREBIRD_URL" -o /tmp/firebird_install/firebird-bundle.tar.gz; \
+    echo "Verifying checksum: $FIREBIRD_SHA256 for downloaded file"; \
+    echo "$FIREBIRD_SHA256 /tmp/firebird_install/firebird-bundle.tar.gz" | sha256sum -c -; \
     \
     # Extract, install, clean
     cd /tmp/firebird_install; \
@@ -66,7 +70,9 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # Fix libtommath for FB 3.0 -- https://github.com/FirebirdSQL/firebird/issues/5716#issuecomment-826239174
-RUN [ $FIREBIRD_MAJOR -eq 3 ] && ln -sf /usr/lib/x86_64-linux-gnu/libtommath.so.1 /usr/lib/x86_64-linux-gnu/libtommath.so.0 || true
+RUN set -eux; \
+    ARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "$(uname -m)-linux-gnu"); \
+    [ $FIREBIRD_MAJOR -eq 3 ] && ln -sf /usr/lib/$ARCH/libtommath.so.1 /usr/lib/$ARCH/libtommath.so.0 || true
 
 # System path
 ENV PATH=/opt/firebird/bin:$PATH
@@ -76,15 +82,16 @@ ENV FIREBIRD_DATA=/var/lib/firebird/data
 RUN set -eux; \
     mkdir -p "$FIREBIRD_DATA"; \
     chown -R firebird:firebird "$FIREBIRD_DATA"; \
-    chmod 644 "$FIREBIRD_DATA"
+    chmod 755 "$FIREBIRD_DATA"
 VOLUME $FIREBIRD_DATA
 
 # Entrypoint
 COPY entrypoint.sh /usr/local/bin/
 RUN set -eux; \
     chmod +x /usr/local/bin/entrypoint.sh
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "entrypoint.sh"]
 
+STOPSIGNAL SIGTERM
 EXPOSE 3050/tcp
 
 # Fix terminfo location
