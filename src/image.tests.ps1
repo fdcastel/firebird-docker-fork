@@ -419,3 +419,61 @@ task TZ_can_change_system_timezone {
         $actual | IsAdjacent -ExpectedValue $expected
     }
 }
+
+task FIREBIRD_ROOT_PASSWORD_with_special_characters {
+    # Test SQL injection resistance: passwords with single quotes, semicolons, etc.
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', "FIREBIRD_ROOT_PASSWORD=it's;a--test" {
+        param($cId)
+
+        # Correct password
+        'SELECT 1 FROM rdb$database;' |
+            docker exec -i $cId isql -b -q -u SYSDBA -p "it's;a--test" inet:///var/lib/firebird/data/test.fdb |
+                ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected successful login with special character SYSDBA password."
+
+        docker logs $cId |
+            Contains -Pattern 'Changing SYSDBA password' -ErrorMessage "Expected log message for SYSDBA password change with special characters."
+    }
+}
+
+task FIREBIRD_USER_PASSWORD_with_special_characters {
+    # Test that user passwords with quotes work (SQL injection vector)
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', "FIREBIRD_USER=alice", '-e', "FIREBIRD_PASSWORD=p@ss'word" {
+        param($cId)
+
+        'SELECT 1 FROM rdb$database;' |
+            docker exec -i $cId isql -b -q -u alice -p "p@ss'word" inet:///var/lib/firebird/data/test.fdb |
+                ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected successful login with special character user password."
+
+        docker logs $cId |
+            Contains -Pattern "Creating user 'alice'" -ErrorMessage "Expected log message indicating creation of user 'alice' with special password."
+    }
+}
+
+task Graceful_shutdown_via_SIGTERM {
+    Use-Container -ScriptBlock {
+        param($cId)
+
+        # Send SIGTERM (same as docker stop)
+        docker kill --signal SIGTERM $cId > $null
+        Start-Sleep -Seconds 3
+
+        # Container should have exited cleanly
+        $state = docker inspect --format '{{.State.Status}}' $cId 2>$null
+        if ($state -eq 'running') {
+            # Give it a bit more time
+            Start-Sleep -Seconds 3
+        }
+
+        $logs = docker logs $cId
+        $logs | Contains -Pattern 'Stopping Firebird' -ErrorMessage "Expected 'Stopping Firebird' log on SIGTERM."
+    }
+}
+
+task Tini_is_PID_1 {
+    Use-Container -ScriptBlock {
+        param($cId)
+
+        $pid1 = docker exec $cId cat /proc/1/comm
+        assert ($pid1.Trim() -eq 'tini') "Expected PID 1 to be 'tini', got '$($pid1.Trim())'."
+    }
+}
