@@ -476,3 +476,68 @@ task Tini_is_PID_1 {
         assert ($pid1.Trim() -eq 'tini') "Expected PID 1 to be 'tini', got '$($pid1.Trim())'."
     }
 }
+
+task FIREBIRD_ROOT_PASSWORD_FILE_can_set_password_from_file {
+    $secretDir = New-TemporaryDirectory
+    try {
+        'secretpass123' | Out-File "$secretDir/password.txt" -NoNewline
+
+        Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_ROOT_PASSWORD_FILE=/run/secrets/password.txt', '-v', "$($secretDir):/run/secrets/" {
+            param($cId)
+
+            # Correct password from file
+            'SELECT 1 FROM rdb$database;' |
+                docker exec -i $cId isql -b -q -u SYSDBA -p secretpass123 inet:///var/lib/firebird/data/test.fdb |
+                    ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected successful login with password loaded from _FILE."
+
+            docker logs $cId |
+                Contains -Pattern 'Changing SYSDBA password' -ErrorMessage "Expected SYSDBA password change log when using _FILE."
+        }
+    }
+    finally {
+        Remove-Item $secretDir -Force -Recurse
+    }
+}
+
+task FIREBIRD_PASSWORD_FILE_can_set_user_password_from_file {
+    $secretDir = New-TemporaryDirectory
+    try {
+        'userpass456' | Out-File "$secretDir/user_password.txt" -NoNewline
+
+        Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_USER=bob', '-e', 'FIREBIRD_PASSWORD_FILE=/run/secrets/user_password.txt', '-v', "$($secretDir):/run/secrets/" {
+            param($cId)
+
+            'SELECT 1 FROM rdb$database;' |
+                docker exec -i $cId isql -b -q -u bob -p userpass456 inet:///var/lib/firebird/data/test.fdb |
+                    ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected successful login with user password loaded from _FILE."
+
+            docker logs $cId |
+                Contains -Pattern "Creating user 'bob'" -ErrorMessage "Expected log for user creation with _FILE password."
+        }
+    }
+    finally {
+        Remove-Item $secretDir -Force -Recurse
+    }
+}
+
+task FILE_and_env_var_are_mutually_exclusive {
+    $secretDir = New-TemporaryDirectory
+    try {
+        'filepass' | Out-File "$secretDir/password.txt" -NoNewline
+
+        # Setting both FIREBIRD_ROOT_PASSWORD and FIREBIRD_ROOT_PASSWORD_FILE should fail
+        $($stdout = Invoke-Container -DockerParameters '-e', 'FIREBIRD_ROOT_PASSWORD=envpass', '-e', 'FIREBIRD_ROOT_PASSWORD_FILE=/run/secrets/password.txt', '-v', "$($secretDir):/run/secrets/") 2>&1 |
+            Contains -Pattern 'Both FIREBIRD_ROOT_PASSWORD and FIREBIRD_ROOT_PASSWORD_FILE are set' -ErrorMessage "Expected error when both _FILE and env var are set."
+    }
+    finally {
+        Remove-Item $secretDir -Force -Recurse
+    }
+}
+
+task Tag_correctness_via_docker_inspect {
+    # Verify the image has the correct version label
+    $labels = docker inspect --format '{{json .Config.Labels}}' $env:FULL_IMAGE_NAME | ConvertFrom-Json
+    $version = $labels.'org.opencontainers.image.version'
+    assert ($null -ne $version) "Expected 'org.opencontainers.image.version' label to be set."
+    assert ($version -match '^\d+\.\d+\.\d+$') "Expected version label '$version' to match semantic version pattern."
+}
