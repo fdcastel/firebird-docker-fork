@@ -7,27 +7,122 @@ Thank you for your interest in contributing to Firebird Docker!
 - [Docker](https://docs.docker.com/engine/install/)
 - [PowerShell 7.5+](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux)
 - [Invoke-Build](https://github.com/nightroman/Invoke-Build#install-as-module)
-- [PSFirebird](https://www.powershellgallery.com/packages/PSFirebird) (v1.0.0+)
+- [PSFirebird](https://www.powershellgallery.com/packages/PSFirebird) (v1.0.0+, installed automatically by build tasks)
 
-## Quick Start
+
+
+## Building
+
+To generate the source files and build all images from [`assets.json`](assets.json), run:
 
 ```bash
-# Clone the repo
-git clone https://github.com/fdcastel/firebird-docker-fork.git
-cd firebird-docker-fork
-
-# Install PowerShell dependencies
-pwsh -c "Install-Module InvokeBuild -Force; Install-Module PSFirebird -Force"
-
-# Build all images (or filter)
-pwsh -c "Invoke-Build Build -VersionFilter 5 -DistributionFilter bookworm"
-
-# Run tests
-pwsh -c "Invoke-Build Test -VersionFilter 5 -DistributionFilter bookworm"
-
-# Run tag unit tests
-pwsh -c "Invoke-Pester src/tags.tests.ps1 -Output Detailed"
+Invoke-Build
 ```
+
+Check all created images with:
+
+```bash
+docker image ls firebirdsql/firebird
+```
+
+### Filtering builds
+
+```bash
+# Build only Firebird 5.x images
+Invoke-Build Build -VersionFilter "5"
+
+# Build only a specific version
+Invoke-Build Build -VersionFilter "5.0.3"
+
+# Build only bookworm images
+Invoke-Build Build -DistributionFilter "bookworm"
+
+# Combine filters
+Invoke-Build Build -VersionFilter "4" -DistributionFilter "jammy"
+```
+
+### Building for a fork registry
+
+Use `-Registry` to redirect all image tags to a different registry (e.g. GitHub Container Registry):
+
+```bash
+# Build tagged for ghcr.io (fork testing)
+Invoke-Build Build -VersionFilter "5.0.3" -DistributionFilter "bookworm" -Registry "ghcr.io/myusername"
+```
+
+
+
+## Testing
+
+```bash
+Invoke-Build Test
+```
+
+### Filtering tests
+
+```bash
+# Test only Firebird 4.x images
+Invoke-Build Test -VersionFilter "4"
+
+# Test only bullseye images
+Invoke-Build Test -DistributionFilter "bullseye"
+
+# Run a single test by name
+Invoke-Build Test -TestFilter "FIREBIRD_USER_can_create_user"
+
+# Combine filters
+Invoke-Build Test -VersionFilter "5" -DistributionFilter "noble"
+```
+
+### Tag unit tests
+
+```bash
+Install-Module Pester -Force -SkipPublisherCheck
+Invoke-Pester src/tags.tests.ps1 -Output Detailed
+```
+
+
+
+## Maintenance tasks
+
+```bash
+# Refresh assets.json from GitHub releases (requires network)
+Invoke-Build Update-Assets
+
+# Regenerate README.md from assets.json
+Invoke-Build Update-Readme
+
+# Regenerate Dockerfiles from template
+Invoke-Build Prepare
+
+# Delete generated files
+Invoke-Build Clean
+```
+
+
+
+## Following a new Firebird release
+
+Once a new Firebird release is published on GitHub:
+
+```bash
+# 1. Refresh assets.json (downloads new URLs and SHA-256 hashes)
+Invoke-Build Update-Assets
+
+# 2. Regenerate README.md
+Invoke-Build Update-Readme
+
+# 3. Regenerate Dockerfiles
+Invoke-Build Prepare
+
+# 4. Stage all changes
+git add -u
+
+# 5. Commit
+git commit -m "Add Firebird X.Y.Z"
+```
+
+
 
 ## Project Structure
 
@@ -35,9 +130,13 @@ pwsh -c "Invoke-Pester src/tags.tests.ps1 -Output Detailed"
 - `firebird-docker.build.ps1` — InvokeBuild script with all tasks (Build, Test, Publish, etc.).
 - `src/Dockerfile.template` — Single parameterized Dockerfile using `{{VAR}}` placeholders.
 - `src/entrypoint.sh` — Container entrypoint script.
-- `src/image.tests.ps1` — Integration test suite.
-- `src/functions.ps1` — Shared functions (tag generation, template expansion).
-- `generated/` — Output of the Prepare task (auto-generated, do not edit).
+- `src/functions.ps1` — Shared functions (tag generation, template expansion, distro config).
+- `src/image.tests.ps1` — Integration test suite (Docker required).
+- `src/tags.tests.ps1` — Tag unit tests (Pester, no Docker required).
+- `src/README.md.template` — README template (`{{SupportedTags}}` is replaced at generation time).
+- `generated/` — Output of the `Prepare` task. Auto-generated — do not edit manually.
+
+
 
 ## Key Rules
 
@@ -46,15 +145,7 @@ pwsh -c "Invoke-Pester src/tags.tests.ps1 -Output Detailed"
 3. **All tests must pass before submitting a PR.**
 4. **ARM64 uses native runners only.** Never QEMU.
 
-## Following a New Firebird Release
 
-```bash
-pwsh -c "Invoke-Build Update-Assets"
-pwsh -c "Invoke-Build Update-Readme"
-pwsh -c "Invoke-Build Prepare"
-git add -u
-git commit -m "Add Firebird X.Y.Z"
-```
 
 ## Reporting Issues
 

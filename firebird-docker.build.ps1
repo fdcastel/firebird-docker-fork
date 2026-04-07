@@ -354,6 +354,32 @@ task Test FilteredAssets, {
     }
 }
 
+# Synopsis: Retag and push images using the final name (no -arch suffix). Use for single-arch publishing.
+# Produces only one package (e.g. ghcr.io/owner/firebird) with no staging intermediates.
+task Publish-Direct FilteredAssets, {
+    $imagePrefix = $script:imagePrefix
+    $imageName = 'firebird'
+
+    $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
+
+    $assets | ForEach-Object {
+        $asset = $_
+
+        Write-Build Magenta "----- [$($asset.version) / direct] -----"
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            $imageTags = $asset.tags.$distribution
+
+            $imageTags | ForEach-Object {
+                $tag = $_
+                docker tag "$imagePrefix/${imageName}-${hostArch}:$tag" "$imagePrefix/${imageName}:$tag"
+                docker push "$imagePrefix/${imageName}:$tag"
+            }
+        }
+    }
+}
+
 # Synopsis: Publish arch-specific images (run on each arch runner separately).
 task Publish-Arch FilteredAssets, {
     $imagePrefix = $script:imagePrefix
