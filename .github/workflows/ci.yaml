@@ -3,6 +3,9 @@ name: ci
 # Build and run all tests.
 # - Triggers: All pushes and pull requests on any branch.
 # - Runs on: All repositories (including forks)
+#
+# Forks build only the latest version (fast feedback).
+# Full matrix runs on workflow_dispatch or the official repo.
 
 on:
   push:
@@ -11,10 +14,18 @@ on:
   pull_request:
     branches: ['**']
 
-  workflow_dispatch:  # Allows manual dispatch
+  workflow_dispatch:
+    inputs:
+      version-filter:
+        description: 'Version filter (e.g. 5, 4.0, 5.0.3). Empty = all.'
+        required: false
+        type: string
+      distro-filter:
+        description: 'Distro filter (e.g. bookworm). Empty = all.'
+        required: false
+        type: string
 
 # Prevents overlapping runs of this workflow on the same branch.
-#   If multiple commits are pushed in quick succession, only the most recent run will complete.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,31 +37,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 10
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Install tools
         shell: pwsh
         run: |
           Install-Module InvokeBuild -Force
+          Install-Module PSFirebird -MinimumVersion '1.0.0' -Force
+
+      - name: Determine build scope
+        id: scope
+        shell: pwsh
+        run: |
+          # workflow_dispatch inputs take priority
+          $vf = '${{ inputs.version-filter }}'
+          $df = '${{ inputs.distro-filter }}'
+
+          # For forks (non-dispatch), build only latest version + default distro
+          if (-not $vf -and '${{ github.event_name }}' -ne 'workflow_dispatch') {
+            $isOfficial = '${{ github.repository }}' -eq 'FirebirdSQL/firebird-docker'
+            if (-not $isOfficial) {
+              $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+              $vf = $assets.versions[0].version
+              $df = $assets.config.defaultDistro
+            }
+          }
+
+          "version-filter=$vf" >> $env:GITHUB_OUTPUT
+          "distro-filter=$df" >> $env:GITHUB_OUTPUT
 
       - name: Build
         shell: pwsh
         run: |
-          Invoke-Build
+          $params = @{}
+          if ('${{ steps.scope.outputs.version-filter }}') { $params['VersionFilter'] = '${{ steps.scope.outputs.version-filter }}' }
+          if ('${{ steps.scope.outputs.distro-filter }}') { $params['DistributionFilter'] = '${{ steps.scope.outputs.distro-filter }}' }
+          Invoke-Build Build @params
 
       - name: Test
         shell: pwsh
         run: |
-          Invoke-Build Test
+          $params = @{}
+          if ('${{ steps.scope.outputs.version-filter }}') { $params['VersionFilter'] = '${{ steps.scope.outputs.version-filter }}' }
+          if ('${{ steps.scope.outputs.distro-filter }}') { $params['DistributionFilter'] = '${{ steps.scope.outputs.distro-filter }}' }
+          Invoke-Build Test @params
 
-      - name: Upload logs
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ci-logs-${{ github.run_id }}
-          path: generated/logs
-          retention-days: 7  # Short log retention for CI runs
+      - name: Run tag unit tests
+        shell: pwsh
+        run: |
+          Install-Module Pester -Force -SkipPublisherCheck
+          Invoke-Pester src/tags.tests.ps1 -Output Detailed -CI
