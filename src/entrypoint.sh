@@ -36,7 +36,7 @@ read_from_file_or_env() {
 			-----
 			ERROR: Both $var and $fileVar are set.
 			
-			       Variables %s and %s are mutually exclusive. Remove either one.
+			       Variables $var and $fileVar are mutually exclusive. Remove either one.
 			-----
 		EOL
         exit 1
@@ -52,6 +52,13 @@ read_from_file_or_env() {
 
     export "$var"="$val"
     unset "$fileVar"
+}
+
+# usage: escape_sql_string STR
+#    ie: escape_sql_string "it's_me"
+# Escapes single quotes for safe SQL interpolation.
+escape_sql_string() {
+    printf '%s' "${1//\'/\'\'}"
 }
 
 # usage: firebird_config_set KEY VALUE
@@ -97,7 +104,8 @@ set_config() {
     done
 
     # Output changed settings
-    local changed_settings=$(grep -o '^[^#]*' /opt/firebird/firebird.conf)
+    local changed_settings
+    changed_settings=$(grep -o '^[^#]*' /opt/firebird/firebird.conf) || true
     if [ -n "$changed_settings" ]; then
         echo "Using settings:"
         echo "$changed_settings" | indent
@@ -110,10 +118,13 @@ set_sysdba() {
     if [ -n "$FIREBIRD_ROOT_PASSWORD" ]; then
         echo 'Changing SYSDBA password.'
 
+        local escaped_password
+        escaped_password=$(escape_sql_string "$FIREBIRD_ROOT_PASSWORD")
+
         # [Tabs ahead]
         /opt/firebird/bin/isql -b -user SYSDBA security.db <<-EOL
 			CREATE OR ALTER USER SYSDBA
-			    PASSWORD '$FIREBIRD_ROOT_PASSWORD'
+			    PASSWORD '${escaped_password}'
 			    USING PLUGIN Srp;
 			EXIT;
 		EOL
@@ -122,7 +133,7 @@ set_sysdba() {
             # [Tabs ahead]
             /opt/firebird/bin/isql -b -user SYSDBA security.db <<-EOL
 				CREATE OR ALTER USER SYSDBA
-				    PASSWORD '$FIREBIRD_ROOT_PASSWORD'
+				    PASSWORD '${escaped_password}'
 				    USING PLUGIN Legacy_UserManager;
 				EXIT;
 			EOL
@@ -156,10 +167,15 @@ create_user() {
         requires_user_password
         echo "Creating user '$FIREBIRD_USER'..."
 
+        local escaped_user
+        escaped_user=$(escape_sql_string "$FIREBIRD_USER")
+        local escaped_password
+        escaped_password=$(escape_sql_string "$FIREBIRD_PASSWORD")
+
         # [Tabs ahead]
         /opt/firebird/bin/isql -b security.db <<-EOL
-			CREATE OR ALTER USER $FIREBIRD_USER
-			    PASSWORD '$FIREBIRD_PASSWORD'
+			CREATE OR ALTER USER ${escaped_user}
+			    PASSWORD '${escaped_password}'
 			    GRANT ADMIN ROLE;
 			EXIT;
 		EOL
@@ -178,11 +194,16 @@ process_sql() {
 		isql_command+=( "$FIREBIRD_DATABASE" )
 	fi
 
-    ${isql_command[@]} "$@"
+    "${isql_command[@]}" "$@"
 }
 
 # Execute database initialization scripts
 init_db() {
+    # Guard against empty glob (no files match)
+    if ! compgen -G "$1" > /dev/null 2>&1; then
+        return
+    fi
+
     local f
     for f; do
         case "$f" in
@@ -197,7 +218,7 @@ init_db() {
                     . "$f"
                 fi
                 ;;
-            *.sql)     printf '  running %s\n' "$f"; cat "$f" | process_sql; printf '\n' ;;
+            *.sql)     printf '  running %s\n' "$f"; process_sql < "$f"; printf '\n' ;;
             *.sql.gz)  printf '  running %s\n' "$f"; gunzip -c "$f" | process_sql; printf '\n' ;;
             *.sql.xz)  printf '  running %s\n' "$f"; xzcat "$f" | process_sql; printf '\n' ;;
             *.sql.zst) printf '  running %s\n' "$f"; zstd -dc "$f" | process_sql; printf '\n' ;;
@@ -205,7 +226,6 @@ init_db() {
         esac
         printf '\n'
     done
-
 }
 
 # Create user database.
@@ -216,8 +236,8 @@ create_db() {
         cd "$FIREBIRD_DATA"
         export FIREBIRD_DATABASE=$(realpath --canonicalize-missing "$FIREBIRD_DATABASE")
 
-        # Store it for other sessions of this instance
-        echo "export FIREBIRD_DATABASE='$FIREBIRD_DATABASE'" > ~/.bashrc
+        # Store it for other sessions of this instance (append, do not overwrite)
+        echo "export FIREBIRD_DATABASE='$FIREBIRD_DATABASE'" >> /opt/firebird/.firebird_env
 
         # Create database only if not exists.
         if [ ! -f "$FIREBIRD_DATABASE" ]; then
@@ -226,8 +246,17 @@ create_db() {
             read_from_file_or_env 'FIREBIRD_DATABASE_PAGE_SIZE'
             read_from_file_or_env 'FIREBIRD_DATABASE_DEFAULT_CHARSET'
 
+            local escaped_database
+            escaped_database=$(escape_sql_string "$FIREBIRD_DATABASE")
+
             local user_and_password=''
-            [ -n "$FIREBIRD_USER" ] && user_and_password=" USER '$FIREBIRD_USER' PASSWORD '$FIREBIRD_PASSWORD'"
+            if [ -n "$FIREBIRD_USER" ]; then
+                local escaped_user
+                escaped_user=$(escape_sql_string "$FIREBIRD_USER")
+                local escaped_password
+                escaped_password=$(escape_sql_string "$FIREBIRD_PASSWORD")
+                user_and_password=" USER '${escaped_user}' PASSWORD '${escaped_password}'"
+            fi
 
             local page_size=''
             [ -n "$FIREBIRD_DATABASE_PAGE_SIZE" ] && page_size="PAGE_SIZE $FIREBIRD_DATABASE_PAGE_SIZE"
@@ -237,7 +266,7 @@ create_db() {
 
             # [Tabs ahead]
             /opt/firebird/bin/isql -b -q <<-EOL
-			CREATE DATABASE '$FIREBIRD_DATABASE'
+			CREATE DATABASE '${escaped_database}'
 			    $user_and_password
 			    $page_size
 			    $default_charset;
