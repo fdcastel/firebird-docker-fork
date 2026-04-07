@@ -28,7 +28,6 @@ function Use-Container([string[]]$Parameters, [Parameter(Mandatory)][ScriptBlock
     $cId = docker $allParameters
     try {
         Write-Verbose "  container id = $cId"
-        Start-Sleep -Seconds 0.5
         Wait-Port -ContainerName $cId -Port 3050
 
         # Last check before execute
@@ -52,7 +51,7 @@ function Use-Container([string[]]$Parameters, [Parameter(Mandatory)][ScriptBlock
 
 # Wait for a port to be open in a container.
 function Wait-Port([string]$ContainerName, [int]$Port) {
-    while (-not (Test-Port -ContainerName $cId -Port 3050)) {
+    while (-not (Test-Port -ContainerName $ContainerName -Port $Port)) {
         Start-Sleep -Seconds 0.2
     }
 }
