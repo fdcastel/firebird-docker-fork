@@ -27,13 +27,23 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-snapshot:
     if: ${{ github.repository == 'FirebirdSQL/firebird-docker' }}
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         branch: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.branch)) || fromJSON('["master", "v5.0-release"]') }}
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
