@@ -6,6 +6,10 @@ name: publish-fork
 #
 # Images are published to ghcr.io/<owner>/firebird
 # Default scope: latest Firebird version + bookworm (fast, ~2 minutes)
+# Default result: ONE package — ghcr.io/<owner>/firebird — with all expected tags.
+#
+# With include-arm64=true: publishes ghcr.io/<owner>/firebird as a multi-arch image
+# (plus temporary staging packages firebird-amd64 / firebird-arm64 needed for manifest creation).
 #
 # Usage:
 #   Go to Actions → publish-fork → Run workflow
@@ -23,7 +27,7 @@ on:
         required: false
         type: string
       include-arm64:
-        description: 'Also build ARM64 images (takes ~2x longer).'
+        description: 'Also build ARM64 images (takes ~2x longer; produces extra staging packages).'
         required: false
         type: boolean
         default: false
@@ -118,7 +122,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push arch-specific images
+      # amd64-only: push as the final image name — produces exactly ONE package.
+      - name: Push (amd64 only — final name, no staging)
+        if: ${{ !inputs.include-arm64 }}
+        shell: pwsh
+        run: |
+          Invoke-Build Publish-Direct `
+            -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
+            -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
+            -Registry '${{ env.REGISTRY }}'
+
+      # multi-arch: push with -amd64/-arm64 staging suffixes for later manifest creation.
+      - name: Push (staging for multi-arch manifest)
+        if: ${{ inputs.include-arm64 }}
         shell: pwsh
         run: |
           Invoke-Build Publish-Arch `
@@ -138,7 +154,36 @@ jobs:
             docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
           }
 
+      # Summary only for the amd64-only case (multi-arch summary is in create-manifests).
+      - name: Summary
+        if: ${{ !inputs.include-arm64 && matrix.arch == 'amd64' }}
+        shell: pwsh
+        run: |
+          $vf = '${{ needs.determine-scope.outputs.version-filter }}'
+          $df = '${{ needs.determine-scope.outputs.distro-filter }}'
+          $registry = '${{ env.REGISTRY }}'
+          $imageName = '${{ env.IMAGE_NAME }}'
+
+          $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+          $filtered = $assets.versions | Where-Object { $_.version -like "$vf*" }
+          $tags = $filtered | ForEach-Object { $_.tags.$df } | Select-Object -First 5
+
+          @"
+          ## Published to GitHub Container Registry
+
+          **Registry:** ``$registry/$imageName``
+
+          ### Pull commands
+          ``````
+          $(($tags | ForEach-Object { "docker pull $registry/${imageName}:$_" }) -join "`n")
+          ``````
+
+          > Make the package public at: https://github.com/${{ github.repository_owner }}?tab=packages
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+  # Only runs when include-arm64=true. Creates multi-arch OCI manifests from staging images.
   create-manifests:
+    if: ${{ inputs.include-arm64 }}
     needs: [determine-scope, build-and-push]
     permissions:
       packages: write
@@ -180,8 +225,8 @@ jobs:
           $filtered = $assets.versions | Where-Object { $_.version -like "$vf*" }
           $tags = $filtered | ForEach-Object { $_.tags.$df } | Select-Object -First 5
 
-          $summary = @"
-          ## Published to GitHub Container Registry
+          @"
+          ## Published to GitHub Container Registry (multi-arch)
 
           **Registry:** ``$registry/$imageName``
 
@@ -190,7 +235,8 @@ jobs:
           $(($tags | ForEach-Object { "docker pull $registry/${imageName}:$_" }) -join "`n")
           ``````
 
-          > Make the package public at: https://github.com/${{ github.repository_owner }}?tab=packages
-          "@
+          > The staging packages ``firebird-amd64`` / ``firebird-arm64`` can be deleted manually
+          > at https://github.com/${{ github.repository_owner }}?tab=packages
 
-          $summary >> $env:GITHUB_STEP_SUMMARY
+          > Make the final package public at: https://github.com/${{ github.repository_owner }}?tab=packages
+          "@ >> $env:GITHUB_STEP_SUMMARY
