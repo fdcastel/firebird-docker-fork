@@ -345,6 +345,12 @@ task Test FilteredAssets, {
             $asset.tags.($_.Name) | Select-Object -First 1
         }
 
+        # Skip versions not supported on the current host architecture
+        if ($hostArch -eq 'arm64' -and -not $hasArm64) {
+            Write-Build Yellow "----- [$($asset.version)] skipped (no arm64 build) -----"
+            return
+        }
+
         Write-Build Magenta "----- [$($asset.version)] -----"
 
         # Test host architecture
