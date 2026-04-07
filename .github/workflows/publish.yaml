@@ -21,9 +21,6 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-and-test:
     if: ${{ github.repository == 'FirebirdSQL/firebird-docker' }}
@@ -39,7 +36,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install tools
         shell: pwsh
@@ -81,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install tools
         shell: pwsh

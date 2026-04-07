@@ -30,9 +30,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   determine-scope:
     runs-on: ubuntu-latest
@@ -42,7 +39,7 @@ jobs:
       is-official: ${{ steps.scope.outputs.is-official }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Determine build scope
         id: scope
@@ -84,7 +81,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install tools
         shell: pwsh
