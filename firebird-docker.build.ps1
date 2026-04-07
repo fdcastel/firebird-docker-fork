@@ -2,7 +2,10 @@ param(
     [string]$VersionFilter,       # Filter by version (e.g. '3', '4.0', '5.0.2').
     [string]$DistributionFilter,  # Filter by image distribution (e.g. 'bookworm', 'bullseye', 'jammy').
 
-    [string]$TestFilter           # Filter by test name (e.g., 'FIREBIRD_USER_can_create_user'). Used only in the 'Test' task.
+    [string]$TestFilter,          # Filter by test name (e.g., 'FIREBIRD_USER_can_create_user'). Used only in the 'Test' task.
+
+    [ValidateSet('master', 'v5.0-release', 'v4.0')]
+    [string]$Branch               # Snapshot branch. Used only in the 'Build-Snapshot' task.
 )
 
 #
@@ -386,6 +389,90 @@ task Publish FilteredAssets, {
             }
         }
     }
+}
+
+# Synopsis: Build a snapshot image from a Firebird pre-release branch.
+task Build-Snapshot LoadAssets, {
+    if (-not $Branch) {
+        throw "The -Branch parameter is required for Build-Snapshot. Use: Invoke-Build Build-Snapshot -Branch master"
+    }
+
+    # PSFirebird is required for this task
+    if (-not (Get-Module PSFirebird -ListAvailable)) {
+        Install-Module PSFirebird -MinimumVersion '1.0.0' -Force -Scope CurrentUser
+    }
+    Import-Module PSFirebird -MinimumVersion '1.0.0'
+
+    $PSStyle.OutputRendering = 'PlainText'
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
+    $defaultDistro = 'bookworm'
+
+    # Detect host architecture
+    $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
+    $rid = if ($hostArch -eq 'amd64') { 'linux-x64' } else { 'linux-arm64' }
+
+    Write-Build Cyan "Querying snapshot for branch '$Branch' ($rid)..."
+    $snapshot = Find-FirebirdSnapshotRelease -Branch $Branch -RuntimeIdentifier $rid
+
+    Write-Build Cyan "Found: $($snapshot.FileName) (uploaded: $($snapshot.UploadedAt))"
+
+    # Determine version tag from branch
+    $snapshotTag = switch ($Branch) {
+        'master'        { '6-snapshot' }
+        'v5.0-release'  { '5-snapshot' }
+        'v4.0'          { '4-snapshot' }
+    }
+
+    # Determine major version for Dockerfile template
+    $major = switch ($Branch) {
+        'master'        { '6' }
+        'v5.0-release'  { '5' }
+        'v4.0'          { '4' }
+    }
+
+    # Prepare snapshot Dockerfile
+    $snapshotFolder = Join-Path $outputFolder "snapshot-$Branch" $defaultDistro
+    New-Item -ItemType Directory $snapshotFolder -Force > $null
+
+    $distroConfig = Get-DistroConfig -Distro $defaultDistro
+    $variables = @{
+        'BASE_IMAGE'        = $distroConfig.baseImage
+        'ICU_PACKAGE'       = $distroConfig.icuPackage
+        'EXTRA_PACKAGES'    = ''
+        'URL_AMD64'         = if ($hostArch -eq 'amd64') { "$($snapshot.Url)" } else { '' }
+        'SHA256_AMD64'      = if ($hostArch -eq 'amd64') { "$($snapshot.Sha256)" } else { '' }
+        'URL_ARM64'         = if ($hostArch -eq 'arm64') { "$($snapshot.Url)" } else { '' }
+        'SHA256_ARM64'      = if ($hostArch -eq 'arm64') { "$($snapshot.Sha256)" } else { '' }
+        'FIREBIRD_VERSION'  = "$snapshotTag"
+        'FIREBIRD_MAJOR'    = $major
+    }
+
+    $dockerfile = Expand-TemplateFile -Path './src/Dockerfile.template' -Variables $variables
+
+    # Remove the unused arch case
+    if ($hostArch -eq 'amd64') {
+        $dockerfile = $dockerfile -replace "(?ms)\s+arm64\)\s*\\.*?;;\s*\\", ''
+    } else {
+        $dockerfile = $dockerfile -replace "(?ms)\s+amd64\)\s*\\.*?;;\s*\\", ''
+    }
+
+    Write-GeneratedFile -Content $dockerfile -Destination "$snapshotFolder/Dockerfile"
+    Copy-Item './src/entrypoint.sh' $snapshotFolder
+
+    # Build
+    $buildArgs = @(
+        'build'
+        '--tag', "$imagePrefix/${imageName}:$snapshotTag"
+        '--label', 'org.opencontainers.image.description=Firebird Database (snapshot)'
+        '--label', "org.opencontainers.image.version=$snapshotTag"
+        '--progress=plain'
+        $snapshotFolder
+    )
+    Write-Build Cyan "----- [snapshot / $Branch / $hostArch] -----"
+    exec { & docker $buildArgs *>&1 }
+
+    Write-Build Green "Snapshot image built: $imagePrefix/${imageName}:$snapshotTag"
 }
 
 # Synopsis: Default task.
