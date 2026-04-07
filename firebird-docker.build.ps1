@@ -399,7 +399,10 @@ task Publish-Arch FilteredAssets, {
 
             $imageTags | ForEach-Object {
                 $tag = $_
-                docker push "$imagePrefix/${imageName}-${hostArch}:$tag"
+                # Retag to use a tag suffix (not a separate image name) so that
+                # staging images land in the same registry package as the final image.
+                docker tag "$imagePrefix/${imageName}-${hostArch}:$tag" "$imagePrefix/${imageName}:$tag-$hostArch"
+                docker push "$imagePrefix/${imageName}:$tag-$hostArch"
             }
         }
     }
@@ -425,20 +428,20 @@ task Publish-Manifests FilteredAssets, {
 
                 if ($hasArm64) {
                     docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-amd64:$tag" `
-                        "$imagePrefix/${imageName}-arm64:$tag"
+                        "$imagePrefix/${imageName}:$tag-amd64" `
+                        "$imagePrefix/${imageName}:$tag-arm64"
 
                     docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-amd64:$tag" --os linux --arch amd64
+                        "$imagePrefix/${imageName}:$tag-amd64" --os linux --arch amd64
                     docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-arm64:$tag" --os linux --arch arm64
+                        "$imagePrefix/${imageName}:$tag-arm64" --os linux --arch arm64
 
                     docker manifest push "$imagePrefix/${imageName}:$tag"
                 }
                 else {
-                    # amd64-only: create a single-arch "manifest" by retagging
+                    # amd64-only: create a single-arch manifest from the staging tag
                     docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-amd64:$tag"
+                        "$imagePrefix/${imageName}:$tag-amd64"
                     docker manifest push "$imagePrefix/${imageName}:$tag"
                 }
             }
@@ -463,26 +466,28 @@ task Publish FilteredAssets, {
 
             $imageTags | ForEach-Object {
                 $tag = $_
-                docker push "$imagePrefix/${imageName}-amd64:$tag"
+                docker tag "$imagePrefix/${imageName}-amd64:$tag" "$imagePrefix/${imageName}:$tag-amd64"
+                docker push "$imagePrefix/${imageName}:$tag-amd64"
 
                 if ($hasArm64) {
-                    docker push "$imagePrefix/${imageName}-arm64:$tag"
+                    docker tag "$imagePrefix/${imageName}-arm64:$tag" "$imagePrefix/${imageName}:$tag-arm64"
+                    docker push "$imagePrefix/${imageName}:$tag-arm64"
 
                     docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-amd64:$tag" `
-                        "$imagePrefix/${imageName}-arm64:$tag"
+                        "$imagePrefix/${imageName}:$tag-amd64" `
+                        "$imagePrefix/${imageName}:$tag-arm64"
 
                     docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-amd64:$tag" --os linux --arch amd64
+                        "$imagePrefix/${imageName}:$tag-amd64" --os linux --arch amd64
                     docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}-arm64:$tag" --os linux --arch arm64
+                        "$imagePrefix/${imageName}:$tag-arm64" --os linux --arch arm64
 
                     docker manifest push "$imagePrefix/${imageName}:$tag"
                 }
                 else {
-                    docker image tag "$imagePrefix/${imageName}-amd64:$tag" `
-                        "$imagePrefix/${imageName}:$tag"
-                    docker push "$imagePrefix/${imageName}:$tag"
+                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}:$tag-amd64"
+                    docker manifest push "$imagePrefix/${imageName}:$tag"
                 }
             }
         }

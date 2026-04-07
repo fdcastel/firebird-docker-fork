@@ -116,7 +116,7 @@ jobs:
             -Registry '${{ env.REGISTRY }}'
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -177,8 +177,6 @@ jobs:
           ``````
           $(($tags | ForEach-Object { "docker pull $registry/${imageName}:$_" }) -join "`n")
           ``````
-
-          > Make the package public at: https://github.com/${{ github.repository_owner }}?tab=packages
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   # Only runs when include-arm64=true. Creates multi-arch OCI manifests from staging images.
@@ -199,7 +197,7 @@ jobs:
           Install-Module PSFirebird -MinimumVersion '1.0.0' -Force
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -234,9 +232,4 @@ jobs:
           ``````
           $(($tags | ForEach-Object { "docker pull $registry/${imageName}:$_" }) -join "`n")
           ``````
-
-          > The staging packages ``firebird-amd64`` / ``firebird-arm64`` can be deleted manually
-          > at https://github.com/${{ github.repository_owner }}?tab=packages
-
-          > Make the final package public at: https://github.com/${{ github.repository_owner }}?tab=packages
           "@ >> $env:GITHUB_STEP_SUMMARY
