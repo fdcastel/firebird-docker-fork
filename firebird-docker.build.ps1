@@ -348,7 +348,73 @@ task Test FilteredAssets, {
     }
 }
 
-# Synopsis: Publish all images.
+# Synopsis: Publish arch-specific images (run on each arch runner separately).
+task Publish-Arch FilteredAssets, {
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
+
+    # Detect host architecture
+    $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
+
+    $assets | ForEach-Object {
+        $asset = $_
+
+        Write-Build Magenta "----- [$($asset.version) / $hostArch] -----"
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            $imageTags = $asset.tags.$distribution
+
+            $imageTags | ForEach-Object {
+                $tag = $_
+                docker push "$imagePrefix/${imageName}-${hostArch}:$tag"
+            }
+        }
+    }
+}
+
+# Synopsis: Create and push multi-arch manifests (run once after all arch builds complete).
+task Publish-Manifests FilteredAssets, {
+    $imagePrefix = 'firebirdsql'
+    $imageName = 'firebird'
+
+    $assets | ForEach-Object {
+        $asset = $_
+        $hasArm64 = ($null -ne $asset.releases.arm64)
+
+        Write-Build Magenta "----- [$($asset.version)] -----"
+
+        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
+            $distribution = $_.Name
+            $imageTags = $asset.tags.$distribution
+
+            $imageTags | ForEach-Object {
+                $tag = $_
+
+                if ($hasArm64) {
+                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-amd64:$tag" `
+                        "$imagePrefix/${imageName}-arm64:$tag"
+
+                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-amd64:$tag" --os linux --arch amd64
+                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-arm64:$tag" --os linux --arch arm64
+
+                    docker manifest push "$imagePrefix/${imageName}:$tag"
+                }
+                else {
+                    # amd64-only: create a single-arch "manifest" by retagging
+                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
+                        "$imagePrefix/${imageName}-amd64:$tag"
+                    docker manifest push "$imagePrefix/${imageName}:$tag"
+                }
+            }
+        }
+    }
+}
+
+# Synopsis: Publish all images (single-machine workflow: push + manifest creation).
 task Publish FilteredAssets, {
     $imagePrefix = 'firebirdsql'
     $imageName = 'firebird'
