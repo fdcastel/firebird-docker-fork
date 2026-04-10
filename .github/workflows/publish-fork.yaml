@@ -9,7 +9,7 @@ name: publish-fork
 # Default result: ONE package — ghcr.io/<owner>/firebird — with all expected tags.
 #
 # With include-arm64=true: publishes ghcr.io/<owner>/firebird as a multi-arch image
-# (plus temporary staging packages firebird-amd64 / firebird-arm64 needed for manifest creation).
+# (plus temporary firebird:<tag>-amd64 / firebird:<tag>-arm64 staging tags for manifest creation).
 #
 # Usage:
 #   Go to Actions → publish-fork → Run workflow
