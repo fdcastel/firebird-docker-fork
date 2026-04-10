@@ -1,6 +1,7 @@
 param(
     [string]$VersionFilter,       # Filter by version (e.g. '3', '4.0', '5.0.2').
     [string]$DistributionFilter,  # Filter by image distribution (e.g. 'bookworm', 'bullseye', 'jammy').
+    [switch]$LatestPerMajor,      # Build/test only the latest release of each major Firebird version.
 
     [string]$TestFilter,          # Filter by test name (e.g., 'FIREBIRD_USER_can_create_user'). Used only in the 'Test' task.
 
@@ -178,6 +179,11 @@ task FilteredAssets LoadAssets, {
     if ($DistributionFilter) {
         $result = $result | Where-Object { $_.tags.$DistributionFilter -ne $null } |
             Select-Object -Property 'version','releases',@{Name = 'tags'; Expression = { [PSCustomObject]@{ "$DistributionFilter" = $_.tags.$DistributionFilter } } }
+    }
+
+    if ($LatestPerMajor) {
+        # Keep only the first (latest) entry per major version
+        $result = $result | Group-Object { ([version]$_.version).Major } | ForEach-Object { $_.Group[0] }
     }
 
     if (-not $result) {

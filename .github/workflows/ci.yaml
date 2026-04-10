@@ -3,6 +3,9 @@ name: ci
 # Build and run all tests.
 # - Triggers: All pushes and pull requests on any branch.
 # - Runs on: All repositories (including forks)
+#
+# Forks (non-dispatch): build only the latest release per major Firebird version.
+# Official repo or workflow_dispatch: full build of all versions.
 
 on:
   push:
@@ -28,8 +31,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  determine-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      latest-per-major: ${{ steps.scope.outputs.latest-per-major }}
+    steps:
+      - name: Determine build scope
+        id: scope
+        run: |
+          IS_OFFICIAL="${{ github.repository == 'FirebirdSQL/firebird-docker' }}"
+          IS_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
+          if [[ "$IS_OFFICIAL" == "true" || "$IS_DISPATCH" == "true" ]]; then
+            echo "latest-per-major=false" >> $GITHUB_OUTPUT
+          else
+            echo "latest-per-major=true" >> $GITHUB_OUTPUT
+          fi
+
   build-and-test:
     if: ${{ !(github.repository == 'FirebirdSQL/firebird-docker' && github.ref == 'refs/heads/master') }}
+    needs: determine-scope
     strategy:
       fail-fast: false
       matrix:
@@ -56,6 +76,7 @@ jobs:
           $params = @{}
           if ('${{ inputs.version-filter }}') { $params['VersionFilter'] = '${{ inputs.version-filter }}' }
           if ('${{ inputs.distro-filter }}') { $params['DistributionFilter'] = '${{ inputs.distro-filter }}' }
+          if ('${{ needs.determine-scope.outputs.latest-per-major }}' -eq 'true') { $params['LatestPerMajor'] = $true }
           Invoke-Build Build @params
 
       - name: Test
@@ -64,6 +85,7 @@ jobs:
           $params = @{}
           if ('${{ inputs.version-filter }}') { $params['VersionFilter'] = '${{ inputs.version-filter }}' }
           if ('${{ inputs.distro-filter }}') { $params['DistributionFilter'] = '${{ inputs.distro-filter }}' }
+          if ('${{ needs.determine-scope.outputs.latest-per-major }}' -eq 'true') { $params['LatestPerMajor'] = $true }
           Invoke-Build Test @params
 
       - name: Run tag unit tests
