@@ -17,7 +17,7 @@ Docker images for Firebird Database.
 
 # Supported tags
 
-|`firebirdsql/firebird`|Dockerfile|
+|`ghcr.io/fdcastel/firebird`|Dockerfile|
 |:-|:-:|
 |`5.0.3-bookworm`, `5-bookworm`, `bookworm`, `5.0.3`, `5`, `latest`|[Dockerfile](./generated/5.0.3/bookworm/Dockerfile)|
 |`5.0.3-bullseye`, `5-bullseye`, `bullseye`|[Dockerfile](./generated/5.0.3/bullseye/Dockerfile)|
