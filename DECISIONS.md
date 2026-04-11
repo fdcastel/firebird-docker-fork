@@ -73,3 +73,9 @@ Decisions made during the v2 rewrite, with rationale.
 **Decision:** Daily snapshot builds from `master` (FB6) and `v5.0-release` branches, tagged as `{major}-snapshot`.
 
 **Rationale:** Pre-release testing is valuable for the community. Snapshot tags are clearly distinguished and never collide with release tags.
+
+## D-012: Digest-based multi-arch assembly
+
+**Decision:** Use `docker buildx` with `push-by-digest=true` to push per-arch images without creating any staging tags. Multi-arch manifests are assembled via `docker buildx imagetools create` from raw SHA256 digests.
+
+**Rationale:** The previous approach pushed staging tags (`firebird:tag-amd64`, `firebird:tag-arm64`) into the main Docker Hub package, polluting it with implementation artifacts. The digest-based approach — used by major projects like `postgres`, `nginx`, and `redis` — keeps the registry clean. Image digests are passed between GitHub Actions jobs via artifacts.

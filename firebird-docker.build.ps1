@@ -295,11 +295,11 @@ task Build Prepare, {
             $imageTags = $asset.tags.$distribution
             $hasArm64 = ($null -ne $asset.releases.arm64)
 
-            # Build amd64
+            # Build for host architecture
             if ($hostArch -eq 'amd64') {
                 $tagsAmd64 = $imageTags | ForEach-Object { '--tag', "$imagePrefix/${imageName}-amd64:$_" }
                 $buildArgs = @(
-                    'build'
+                    'buildx', 'build', '--load'
                     $tagsAmd64
                     '--label', 'org.opencontainers.image.description=Firebird Database'
                     '--label', "org.opencontainers.image.version=$($asset.version)"
@@ -310,11 +310,10 @@ task Build Prepare, {
                 exec { & docker $buildArgs *>&1 }
             }
 
-            # Build arm64 (only if available and on arm64 host)
             if ($hasArm64 -and $hostArch -eq 'arm64') {
                 $tagsArm64 = $imageTags | ForEach-Object { '--tag', "$imagePrefix/${imageName}-arm64:$_" }
                 $buildArgs = @(
-                    'build'
+                    'buildx', 'build', '--load'
                     $tagsArm64
                     '--label', 'org.opencontainers.image.description=Firebird Database'
                     '--label', "org.opencontainers.image.version=$($asset.version)"
@@ -437,39 +436,84 @@ task Publish-Direct FilteredAssets, {
     }
 }
 
-# Synopsis: Publish arch-specific images (run on each arch runner separately).
-task Publish-Arch FilteredAssets, {
+# Synopsis: Push images by digest — no tags created in registry. Saves digest mapping to file.
+# Run on each arch runner after Build and Test. Upload generated/digests-*.json as artifact.
+task Push-Digests FilteredAssets, {
     $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
-
-    # Detect host architecture
     $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
+
+    $digests = [ordered]@{}
 
     $assets | ForEach-Object {
         $asset = $_
+        $version = [version]$asset.version
+        $versionFolder = Join-Path $outputFolder $version
+        $hasArm64 = ($null -ne $asset.releases.arm64)
 
-        Write-Build Magenta "----- [$($asset.version) / $hostArch] -----"
+        # Skip if this arch can't build this version
+        if ($hostArch -eq 'arm64' -and -not $hasArm64) {
+            Write-Build Yellow "----- [$($asset.version)] skipped (no arm64 build) -----"
+            return
+        }
 
         $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
             $distribution = $_.Name
-            $imageTags = $asset.tags.$distribution
+            $distributionFolder = Join-Path $versionFolder $distribution
+            $key = "$($asset.version)/$distribution"
 
-            $imageTags | ForEach-Object {
-                $tag = $_
-                # Retag to use a tag suffix (not a separate image name) so that
-                # staging images land in the same registry package as the final image.
-                docker tag "$imagePrefix/${imageName}-${hostArch}:$tag" "$imagePrefix/${imageName}:$tag-$hostArch"
-                docker push "$imagePrefix/${imageName}:$tag-$hostArch"
+            # Push once per version+distro (all tags share the same image)
+            if (-not $digests.ContainsKey($key)) {
+                Write-Build Cyan "----- [$($asset.version) / $distribution / $hostArch → push-by-digest] -----"
+
+                $metadataFile = Join-Path ([System.IO.Path]::GetTempPath()) "metadata-$($asset.version)-$distribution.json"
+
+                $buildArgs = @(
+                    'buildx', 'build'
+                    '--output', "type=image,name=$imagePrefix/$imageName,push-by-digest=true,name-canonical=true,push=true"
+                    '--metadata-file', $metadataFile
+                    '--label', 'org.opencontainers.image.description=Firebird Database'
+                    '--label', "org.opencontainers.image.version=$($asset.version)"
+                    '--progress=plain'
+                    $distributionFolder
+                )
+                exec { & docker $buildArgs *>&1 }
+
+                $metadata = Get-Content $metadataFile -Raw | ConvertFrom-Json
+                $digest = $metadata.'containerimage.digest'
+                $digests[$key] = $digest
+
+                Write-Build Green "  → $digest"
             }
         }
     }
+
+    # Save digests to file for artifact upload
+    $digestFile = Join-Path $outputFolder "digests-$hostArch.json"
+    New-Item -ItemType Directory (Split-Path $digestFile) -Force > $null
+    $digests | ConvertTo-Json | Out-File $digestFile -Encoding UTF8
+    Write-Build Green "Digests saved to $digestFile ($($digests.Count) images)"
 }
 
-# Synopsis: Create and push multi-arch manifests (run once after all arch builds complete).
+# Synopsis: Create and push multi-arch manifests from digest files (run once after all arch builds complete).
+# Requires digest files in generated/digests-{arch}.json (uploaded as artifacts by Push-Digests).
 task Publish-Manifests FilteredAssets, {
     $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
+    # Load digests from artifact files
+    $amd64DigestFile = Join-Path $outputFolder 'digests-amd64.json'
+    $arm64DigestFile = Join-Path $outputFolder 'digests-arm64.json'
+
+    if (-not (Test-Path $amd64DigestFile)) {
+        throw "Digest file not found: $amd64DigestFile. Run Push-Digests first (or download artifacts)."
+    }
+
+    $amd64Digests = Get-Content $amd64DigestFile -Raw | ConvertFrom-Json
+    $arm64Digests = if (Test-Path $arm64DigestFile) {
+        Get-Content $arm64DigestFile -Raw | ConvertFrom-Json
+    }
+
     $assets | ForEach-Object {
         $asset = $_
         $hasArm64 = ($null -ne $asset.releases.arm64)
@@ -479,73 +523,28 @@ task Publish-Manifests FilteredAssets, {
         $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
             $distribution = $_.Name
             $imageTags = $asset.tags.$distribution
+            $key = "$($asset.version)/$distribution"
 
-            $imageTags | ForEach-Object {
-                $tag = $_
+            $amd64Digest = $amd64Digests.$key
+            if (-not $amd64Digest) {
+                Write-Build Yellow "  Skipping $key (no amd64 digest found)"
+                return
+            }
 
-                if ($hasArm64) {
-                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64" `
-                        "$imagePrefix/${imageName}:$tag-arm64"
+            $sources = @("$imagePrefix/${imageName}@$amd64Digest")
 
-                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64" --os linux --arch amd64
-                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-arm64" --os linux --arch arm64
-
-                    docker manifest push "$imagePrefix/${imageName}:$tag"
-                }
-                else {
-                    # amd64-only: create a single-arch manifest from the staging tag
-                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64"
-                    docker manifest push "$imagePrefix/${imageName}:$tag"
+            if ($hasArm64 -and $arm64Digests) {
+                $arm64Digest = $arm64Digests.$key
+                if ($arm64Digest) {
+                    $sources += "$imagePrefix/${imageName}@$arm64Digest"
                 }
             }
-        }
-    }
-}
-
-# Synopsis: Publish all images (single-machine workflow: push + manifest creation).
-task Publish FilteredAssets, {
-    $imagePrefix = $script:imagePrefix
-    $imageName = 'firebird'
-
-    $assets | ForEach-Object {
-        $asset = $_
-        $hasArm64 = ($null -ne $asset.releases.arm64)
-
-        Write-Build Magenta "----- [$($asset.version)] -----"
-
-        $asset.tags | Get-Member -MemberType NoteProperty | ForEach-Object {
-            $distribution = $_.Name
-            $imageTags = $asset.tags.$distribution
 
             $imageTags | ForEach-Object {
                 $tag = $_
-                docker tag "$imagePrefix/${imageName}-amd64:$tag" "$imagePrefix/${imageName}:$tag-amd64"
-                docker push "$imagePrefix/${imageName}:$tag-amd64"
-
-                if ($hasArm64) {
-                    docker tag "$imagePrefix/${imageName}-arm64:$tag" "$imagePrefix/${imageName}:$tag-arm64"
-                    docker push "$imagePrefix/${imageName}:$tag-arm64"
-
-                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64" `
-                        "$imagePrefix/${imageName}:$tag-arm64"
-
-                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64" --os linux --arch amd64
-                    docker manifest annotate "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-arm64" --os linux --arch arm64
-
-                    docker manifest push "$imagePrefix/${imageName}:$tag"
-                }
-                else {
-                    docker manifest create --amend "$imagePrefix/${imageName}:$tag" `
-                        "$imagePrefix/${imageName}:$tag-amd64"
-                    docker manifest push "$imagePrefix/${imageName}:$tag"
-                }
+                Write-Build Cyan "  $tag → manifest ($($sources.Count) arch)"
+                $tagArgs = @('buildx', 'imagetools', 'create', '--tag', "$imagePrefix/${imageName}:$tag") + $sources
+                exec { & docker $tagArgs *>&1 }
             }
         }
     }
@@ -622,7 +621,7 @@ task Build-Snapshot LoadAssets, {
 
     # Build
     $buildArgs = @(
-        'build'
+        'buildx', 'build', '--load'
         '--tag', "$imagePrefix/${imageName}:$snapshotTag"
         '--label', 'org.opencontainers.image.description=Firebird Database (snapshot)'
         '--label', "org.opencontainers.image.version=$snapshotTag"
