@@ -89,7 +89,7 @@ Invoke-Build Test-Published -Registry "ghcr.io/myusername" -VersionFilter "5.0.3
 Invoke-Build Test-Published -Registry "firebirdsql"
 ```
 
-Unlike `Test` (which tests locally built arch-specific staging images), `Test-Published` pulls and tests the final multi-arch manifest — exactly what a user would run.
+Unlike `Test` (which tests locally built arch-specific images), `Test-Published` pulls and tests the final multi-arch manifest — exactly what a user would run.
 
 For snapshot images (not in `assets.json`), set `FULL_IMAGE_NAME` directly:
 

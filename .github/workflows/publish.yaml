@@ -5,7 +5,8 @@ name: publish
 # - Runs on: Only the official repository (FirebirdSQL/firebird-docker)
 #
 # Multi-arch: builds amd64 and arm64 natively on separate runners,
-# then creates multi-arch manifests in a final job.
+# pushes images by digest (no staging tags), then assembles multi-arch
+# manifests via `docker buildx imagetools create`.
 
 on:
   push:
@@ -38,6 +39,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Install tools
         shell: pwsh
         run: |
@@ -69,10 +73,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push arch-specific images
+      - name: Push image digests
         shell: pwsh
         run: |
-          Invoke-Build Publish-Arch
+          Invoke-Build Push-Digests
+
+      - name: Upload digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: generated/digests-*.json
+          if-no-files-found: error
+          retention-days: 1
 
   create-manifests:
     if: ${{ github.repository == 'FirebirdSQL/firebird-docker' }}
@@ -81,6 +93,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: generated
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install tools
         shell: pwsh

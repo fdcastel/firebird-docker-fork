@@ -8,8 +8,9 @@ name: publish-fork
 # Default scope: latest Firebird version + bookworm (fast, ~2 minutes)
 # Default result: ONE package — ghcr.io/<owner>/firebird — with all expected tags.
 #
-# With include-arm64=true: publishes ghcr.io/<owner>/firebird as a multi-arch image
-# (plus temporary firebird:<tag>-amd64 / firebird:<tag>-arm64 staging tags for manifest creation).
+# With include-arm64=true: publishes ghcr.io/<owner>/firebird as a multi-arch image.
+# Images are pushed by digest (no staging tags) and assembled via
+# `docker buildx imagetools create`.
 #
 # Usage:
 #   Go to Actions → publish-fork → Run workflow
@@ -27,7 +28,7 @@ on:
         required: false
         type: string
       include-arm64:
-        description: 'Also build ARM64 images (takes ~2x longer; produces extra staging packages).'
+        description: 'Also build ARM64 images (takes ~2x longer).'
         required: false
         type: boolean
         default: false
@@ -93,6 +94,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Install tools
         shell: pwsh
         run: |
@@ -132,15 +136,24 @@ jobs:
             -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
             -Registry '${{ env.REGISTRY }}'
 
-      # multi-arch: push with -amd64/-arm64 staging suffixes for later manifest creation.
-      - name: Push (staging for multi-arch manifest)
+      # multi-arch: push images by digest (no staging tags created).
+      - name: Push image digests
         if: ${{ inputs.include-arm64 }}
         shell: pwsh
         run: |
-          Invoke-Build Publish-Arch `
+          Invoke-Build Push-Digests `
             -VersionFilter '${{ needs.determine-scope.outputs.version-filter }}' `
             -DistributionFilter '${{ needs.determine-scope.outputs.distro-filter }}' `
             -Registry '${{ env.REGISTRY }}'
+
+      - name: Upload digests
+        if: ${{ inputs.include-arm64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: generated/digests-*.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build and push snapshot images
         if: ${{ inputs.include-snapshots && matrix.arch == 'amd64' }}
@@ -179,7 +192,7 @@ jobs:
           ``````
           "@ >> $env:GITHUB_STEP_SUMMARY
 
-  # Only runs when include-arm64=true. Creates multi-arch OCI manifests from staging images.
+  # Only runs when include-arm64=true. Creates multi-arch OCI manifests from image digests.
   create-manifests:
     if: ${{ inputs.include-arm64 }}
     needs: [determine-scope, build-and-push]
@@ -189,6 +202,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: generated
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Install tools
         shell: pwsh
