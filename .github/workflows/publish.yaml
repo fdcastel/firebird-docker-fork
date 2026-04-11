@@ -120,3 +120,39 @@ jobs:
         shell: pwsh
         run: |
           Invoke-Build Publish-Manifests
+
+  # Generates all Dockerfiles and updates README.md, then commits them back to the repo.
+  # This ensures Dockerfile links in README.md are always valid on GitHub.
+  update-repo:
+    if: ${{ github.repository == 'FirebirdSQL/firebird-docker' }}
+    needs: create-manifests
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install tools
+        shell: pwsh
+        run: |
+          Install-Module InvokeBuild -Force
+          Install-Module PSFirebird -MinimumVersion '1.0.0' -Force
+
+      - name: Generate Dockerfiles and update README
+        shell: pwsh
+        run: |
+          Invoke-Build Prepare
+          Invoke-Build Update-Readme
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add generated/ README.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update generated Dockerfiles and README [skip ci]"
+            git push
+          fi

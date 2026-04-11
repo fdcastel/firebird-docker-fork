@@ -1,8 +1,5 @@
 # Temporary files
 /tmp/
 
-# Generated output
-/generated/
-
 # Logs
 *.log
