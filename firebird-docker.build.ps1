@@ -213,8 +213,11 @@ task Update-Readme LoadAssets, {
         }
     }
 
+    $imageFullName = "$script:imagePrefix/firebird"
+
     $template = Get-Content './src/README.md.template' -Raw -Encoding UTF8
     $content = $template.Replace('{{SupportedTags}}', ($TSupportedTags -join ''))
+    $content = $content.Replace('{{IMAGE_FULL_NAME}}', $imageFullName)
     Write-GeneratedFile -Content $content -Destination './README.md'
 }
 
