@@ -466,7 +466,7 @@ task Push-Digests FilteredAssets, {
             $key = "$($asset.version)/$distribution"
 
             # Push once per version+distro (all tags share the same image)
-            if (-not $digests.ContainsKey($key)) {
+            if (-not $digests.Contains($key)) {
                 Write-Build Cyan "----- [$($asset.version) / $distribution / $hostArch → push-by-digest] -----"
 
                 $metadataFile = Join-Path ([System.IO.Path]::GetTempPath()) "metadata-$($asset.version)-$distribution.json"
