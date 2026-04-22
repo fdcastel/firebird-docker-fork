@@ -40,6 +40,7 @@ task Update-Assets {
 
     # Load current config section (distros, blocked variants, default distro)
     $currentData = Get-Content -Raw -Path './assets.json' | ConvertFrom-Json
+    $script:assetsData = $currentData
     $config = $currentData.config
 
     $defaultDistro = $config.defaultDistro
@@ -68,7 +69,7 @@ task Update-Assets {
 
         foreach ($rel in $matchingReleases) {
             $version = $rel.Version
-            if ($version -lt [version]'3.0.8') { continue }
+            if ($version -lt [version]'3.0.9') { continue }
 
             Write-Output "  Processing $version..."
 
@@ -81,17 +82,15 @@ task Update-Assets {
                 }
             }
 
-            # Get arm64 release (only FB5+)
-            if ($majorVersion -ge 5) {
-                try {
-                    $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
-                    $releaseInfo['arm64'] = [ordered]@{
-                        url    = $arm64.Url
-                        sha256 = $arm64.Sha256
-                    }
-                } catch {
-                    Write-Warning "  No arm64 release for $version"
+            # Get arm64 release (try all majors; older FB3/FB4 releases didn't ship arm64)
+            try {
+                $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
+                $releaseInfo['arm64'] = [ordered]@{
+                    url    = $arm64.Url
+                    sha256 = $arm64.Sha256
                 }
+            } catch {
+                Write-Warning "  No arm64 release for $version"
             }
 
             # If SHA-256 is null (pre-July 2025 releases), download to compute

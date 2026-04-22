@@ -21,7 +21,7 @@ on:
         required: false
         type: string
       distro-filter:
-        description: 'Distro filter (e.g. bookworm). Empty = all.'
+        description: 'Distro filter (e.g. trixie). Empty = all.'
         required: false
         type: string
 
