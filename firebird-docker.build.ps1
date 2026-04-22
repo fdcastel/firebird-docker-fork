@@ -503,18 +503,38 @@ task Publish-Manifests FilteredAssets, {
     $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
 
-    # Load digests from artifact files
+    # Load digests from artifact files. Validate up-front so we fail fast with a
+    # clear message instead of a cryptic Docker error downstream.
     $amd64DigestFile = Join-Path $outputFolder 'digests-amd64.json'
     $arm64DigestFile = Join-Path $outputFolder 'digests-arm64.json'
 
-    if (-not (Test-Path $amd64DigestFile)) {
-        throw "Digest file not found: $amd64DigestFile. Run Push-Digests first (or download artifacts)."
+    function Read-DigestFile($path, $required) {
+        if (-not (Test-Path $path)) {
+            if ($required) {
+                throw "Digest file not found: $path. Run Push-Digests first (or download artifacts)."
+            }
+            return $null
+        }
+        try {
+            $parsed = Get-Content $path -Raw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            throw "Digest file '$path' is not valid JSON: $($_.Exception.Message)"
+        }
+        $keys = $parsed.PSObject.Properties.Name
+        if (-not $keys -or $keys.Count -eq 0) {
+            throw "Digest file '$path' is empty — no digests to assemble."
+        }
+        $sampleKey = $keys[0]
+        $sampleValue = $parsed.$sampleKey
+        if ($sampleValue -notmatch '^sha256:[0-9a-f]{64}$') {
+            throw "Digest file '$path' has malformed digest for key '$sampleKey': '$sampleValue'. Expected 'sha256:<64 hex>'."
+        }
+        Write-Build DarkGray "Loaded $($keys.Count) digests from $path (sample: $sampleKey → $sampleValue)"
+        return $parsed
     }
 
-    $amd64Digests = Get-Content $amd64DigestFile -Raw | ConvertFrom-Json
-    $arm64Digests = if (Test-Path $arm64DigestFile) {
-        Get-Content $arm64DigestFile -Raw | ConvertFrom-Json
-    }
+    $amd64Digests = Read-DigestFile $amd64DigestFile -required $true
+    $arm64Digests = Read-DigestFile $arm64DigestFile -required $false
 
     $assets | ForEach-Object {
         $asset = $_

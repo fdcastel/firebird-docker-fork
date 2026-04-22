@@ -74,8 +74,20 @@ Decisions made during the v2 rewrite, with rationale.
 
 **Rationale:** Pre-release testing is valuable for the community. Snapshot tags are clearly distinguished and never collide with release tags.
 
-## D-012: Digest-based multi-arch assembly
+## D-012: Trixie as default distro
+
+**Decision:** The `defaultDistro` in `assets.json` is `trixie` (Debian 13). Bare tags (`5.0.4`, `5`, `latest`) resolve to the Trixie variant.
+
+**Rationale:** Trixie is the current Debian stable — it ships newer library versions (libicu76, OpenSSL 3.x, glibc 2.41) that match what a fresh deployment would pull elsewhere. Bookworm remains available as `*-bookworm` tags for users who prefer the previous LTS for production stability. Users who want to pin should use the explicit `*-bookworm` or `*-bullseye` tags; the bare tags move forward with Debian stable.
+
+## D-013: Digest-based multi-arch assembly
 
 **Decision:** Use `docker buildx` with `push-by-digest=true` to push per-arch images without creating any staging tags. Multi-arch manifests are assembled via `docker buildx imagetools create` from raw SHA256 digests.
 
 **Rationale:** The previous approach pushed staging tags (`firebird:tag-amd64`, `firebird:tag-arm64`) into the main Docker Hub package, polluting it with implementation artifacts. The digest-based approach — used by major projects like `postgres`, `nginx`, and `redis` — keeps the registry clean. Image digests are passed between GitHub Actions jobs via artifacts.
+
+## D-014: Generated Dockerfiles are tracked in git
+
+**Decision:** The `generated/` directory is committed to the repository. After a successful publish, a workflow job (`update-repo`) regenerates the Dockerfiles and README and auto-commits any changes with `[skip ci]`.
+
+**Rationale:** README links to per-variant `Dockerfile`s (e.g. `generated/5.0.4/trixie/Dockerfile`) need valid targets on GitHub. Keeping the output in git guarantees the links work without requiring contributors to regenerate locally. Auto-commit prevents drift: the committed files always reflect the last successful publish. Contributors must not edit `generated/` by hand — run `Invoke-Build Prepare` to regenerate. The `[skip ci]` marker on the auto-commit prevents a trigger loop.
