@@ -162,12 +162,27 @@ git commit -m "Add Firebird X.Y.Z"
 
 
 
+## Generated files
+
+The `generated/` directory and `README.md` are produced from `assets.json` + `src/` templates. They are **tracked in git** so the README's per-variant `Dockerfile` links resolve on GitHub.
+
+- **Do not edit files under `generated/` by hand.** Edit `assets.json` or the templates in `src/`, then run `Invoke-Build Prepare` (Dockerfiles) and `Invoke-Build Update-Readme` (README).
+- After a successful publish, the `update-repo` CI job regenerates and auto-commits any drift with `[skip ci]`. Manual commits are still welcome; CI just guarantees the tip of `master` is always in sync.
+- A local pre-commit hook (`.githooks/pre-commit`) regenerates when `assets.json` is staged and warns if `generated/` or `README.md` end up out of sync. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+
+
 ## Key Rules
 
 1. **`assets.json` is the single source of truth.** Never hard-code versions or URLs elsewhere.
 2. **Template syntax is `{{VAR}}`.** Simple string replacement only — never `ExpandString` or `<% %>`.
 3. **All tests must pass before submitting a PR.**
 4. **ARM64 uses native runners only.** Never QEMU.
+5. **Never hand-edit `generated/`.** Regenerate via `Invoke-Build Prepare` and stage the result.
 
 
 

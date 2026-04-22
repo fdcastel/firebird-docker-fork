@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Pre-commit hook: warn when assets.json is staged but generated/ and README.md
+# look out of sync. The CI `update-repo` job will fix drift automatically after
+# publish, but catching it locally gives faster feedback.
+#
+# Enable with:   git config core.hooksPath .githooks
+# Skip once with: git commit --no-verify
+
+set -e
+
+if ! git diff --cached --name-only | grep -qx 'assets.json'; then
+    exit 0
+fi
+
+if ! command -v pwsh >/dev/null 2>&1; then
+    echo "pre-commit: pwsh not found; skipping generated-file check." >&2
+    exit 0
+fi
+
+echo "pre-commit: assets.json is staged; regenerating Dockerfiles + README to check for drift..."
+pwsh -NoProfile -Command "Invoke-Build Prepare; Invoke-Build Update-Readme" >/dev/null
+
+stale=$(git status --porcelain -- generated/ README.md)
+if [ -n "$stale" ]; then
+    echo "pre-commit: regeneration changed files not in this commit:" >&2
+    echo "$stale" >&2
+    echo >&2
+    echo "Stage them with:   git add generated/ README.md" >&2
+    echo "Or skip this check: git commit --no-verify" >&2
+    exit 1
+fi
