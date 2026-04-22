@@ -567,7 +567,7 @@ task Build-Snapshot LoadAssets, {
     $PSStyle.OutputRendering = 'PlainText'
     $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
-    $defaultDistro = 'bookworm'
+    $defaultDistro = $script:assetsData.config.defaultDistro
 
     # Detect host architecture
     $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
@@ -621,19 +621,24 @@ task Build-Snapshot LoadAssets, {
     Write-GeneratedFile -Content $dockerfile -Destination "$snapshotFolder/Dockerfile"
     Copy-Item './src/entrypoint.sh' $snapshotFolder
 
+    # Tag with both the bare alias (e.g. `6-snapshot`) and the base-qualified form
+    # (e.g. `6-snapshot-trixie`) so users can tell which distro the snapshot was built on.
+    $snapshotTagWithDistro = "$snapshotTag-$defaultDistro"
+
     # Build
     $buildArgs = @(
         'buildx', 'build', '--load'
         '--tag', "$imagePrefix/${imageName}:$snapshotTag"
+        '--tag', "$imagePrefix/${imageName}:$snapshotTagWithDistro"
         '--label', 'org.opencontainers.image.description=Firebird Database (snapshot)'
         '--label', "org.opencontainers.image.version=$snapshotTag"
         '--progress=plain'
         $snapshotFolder
     )
-    Write-Build Cyan "----- [snapshot / $Branch / $hostArch] -----"
+    Write-Build Cyan "----- [snapshot / $Branch / $defaultDistro / $hostArch] -----"
     exec { & docker $buildArgs *>&1 }
 
-    Write-Build Green "Snapshot image built: $imagePrefix/${imageName}:$snapshotTag"
+    Write-Build Green "Snapshot image built: $imagePrefix/${imageName}:$snapshotTag (also tagged $snapshotTagWithDistro)"
 }
 
 # Synopsis: Default task.

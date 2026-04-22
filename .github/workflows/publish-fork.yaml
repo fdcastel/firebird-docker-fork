@@ -161,10 +161,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+          $defaultDistro = $assets.config.defaultDistro
           foreach ($branch in @('master', 'v5.0-release')) {
             Invoke-Build Build-Snapshot -Branch $branch -Registry '${{ env.REGISTRY }}'
             $tag = if ($branch -eq 'master') { '6-snapshot' } else { '5-snapshot' }
             docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
+            docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag-$defaultDistro"
           }
 
       # Summary only for the amd64-only case (multi-arch summary is in create-manifests).
