@@ -42,10 +42,6 @@ RUN set -eux; \
             FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v3.0.9/Firebird-3.0.9.33560-0.amd64.tar.gz'; \
             FIREBIRD_SHA256='0a80a5dc507f388e96adf9b64584c0b568d94a8f3df19d7baec494c5f98ba5a4'; \
             ;; \
-        arm64) \
-            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v3.0.9/Firebird-3.0.9.33560-0.arm64.tar.gz'; \
-            FIREBIRD_SHA256='3403fce69e17042182dc17f216413fc84b4075f4a62382a4e1434da62e617af9'; \
-            ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac; \
     mkdir -p /tmp/firebird_install; \

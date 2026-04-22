@@ -82,15 +82,21 @@ task Update-Assets {
                 }
             }
 
-            # Get arm64 release (try all majors; older FB3/FB4 releases didn't ship arm64)
-            try {
-                $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
-                $releaseInfo['arm64'] = [ordered]@{
-                    url    = $arm64.Url
-                    sha256 = $arm64.Sha256
+            # Get arm64 release (FB5+ only). FB3 and FB4 ship arm64 tarballs but
+            # use a different layout (pre-extracted `firebird/` root with
+            # AfterUntar.sh instead of an `install.sh` installer), which our
+            # Dockerfile template can't consume — so we intentionally skip them
+            # and keep FB3/FB4 as amd64-only.
+            if ($majorVersion -ge 5) {
+                try {
+                    $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
+                    $releaseInfo['arm64'] = [ordered]@{
+                        url    = $arm64.Url
+                        sha256 = $arm64.Sha256
+                    }
+                } catch {
+                    Write-Warning "  No arm64 release for $version"
                 }
-            } catch {
-                Write-Warning "  No arm64 release for $version"
             }
 
             # If SHA-256 is null (pre-July 2025 releases), download to compute
