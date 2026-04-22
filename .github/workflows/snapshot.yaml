@@ -73,4 +73,7 @@ jobs:
             'v5.0-release'  { '5-snapshot' }
             'v4.0'          { '4-snapshot' }
           }
+          $assets = Get-Content -Raw ./assets.json | ConvertFrom-Json
+          $defaultDistro = $assets.config.defaultDistro
           docker push "firebirdsql/firebird:$tag"
+          docker push "firebirdsql/firebird:$tag-$defaultDistro"
