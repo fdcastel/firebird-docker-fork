@@ -1,0 +1,105 @@
+#
+# This file was auto-generated. Do not edit. See /src.
+#
+
+# Best practices for Dockerfile instructions
+#   https://docs.docker.com/develop/develop-images/instructions/
+
+FROM ubuntu:jammy
+
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+ENV FIREBIRD_VERSION=4.0.7
+ENV FIREBIRD_MAJOR=4
+
+# https://linuxcommand.org/lc3_man_pages/seth.html
+#   -e  Exit immediately if a command exits with a non-zero status.
+#   -u  Treat unset variables as an error when substituting
+#   -x  Print commands and their arguments as they are executed.
+
+# Prerequisites
+#   FB 3.0 uses libncurses5: https://github.com/FirebirdSQL/firebird/issues/6418#issuecomment-826245785
+RUN set -eux; \
+    apt-get update; \
+    # Install prerequisites + tini + curl/ca-certificates for download
+    apt-get install -y --no-install-recommends \
+        libatomic1 \
+        libicu70 \
+        $([ $FIREBIRD_MAJOR -eq 3 ] && echo 'libncurses5' || echo 'libncurses6') \
+        libtomcrypt1 \
+        libtommath1 \
+        netbase \
+        procps \
+        tini \
+        tzdata \
+        ca-certificates \
+        curl; \
+    \
+    # Download
+    ARCH=$(dpkg --print-architecture); \
+    case "$ARCH" in \
+        amd64) \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v4.0.7/Firebird-4.0.7.3271-0.amd64.tar.gz'; \
+            FIREBIRD_SHA256='d2964dfb190d7b0ec57271b53e6539f715ecc119f1cb8cd10339662eed9a7dea'; \
+            ;; \
+        arm64) \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v4.0.7/Firebird-4.0.7.3271-0.arm64.tar.gz'; \
+            FIREBIRD_SHA256='e22a0f1ae1eaaf46e430e8b59a6f5c413589a62cf97ded4da23d58ca5cb9139b'; \
+            ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p /tmp/firebird_install; \
+    echo "Downloading Firebird from $FIREBIRD_URL"; \
+    curl -fSL "$FIREBIRD_URL" -o /tmp/firebird_install/firebird-bundle.tar.gz; \
+    echo "Verifying checksum: $FIREBIRD_SHA256 for downloaded file"; \
+    echo "$FIREBIRD_SHA256 /tmp/firebird_install/firebird-bundle.tar.gz" | sha256sum -c -; \
+    \
+    # Extract, install, clean
+    cd /tmp/firebird_install; \
+    tar --extract --file=firebird-bundle.tar.gz --gunzip --verbose --strip-components=1; \
+    ./install.sh -silent; \
+    rm -rf /tmp/firebird_install; \
+    # Remove unnecessary files
+    rm -rf /opt/firebird/doc \
+           /opt/firebird/examples \
+           /opt/firebird/help \
+           /opt/firebird/include; \
+    # Remove 'employee' sample database from 'databases.conf'
+    sed -i '/^employee/d' /opt/firebird/databases.conf; \
+    \
+    # Clean up temporary packages (curl, ca-certificates) and apt lists
+    apt-get purge -y --auto-remove curl ca-certificates; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+# Fix libtommath for FB 3.0 -- https://github.com/FirebirdSQL/firebird/issues/5716#issuecomment-826239174
+RUN set -eux; \
+    ARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "$(uname -m)-linux-gnu"); \
+    [ $FIREBIRD_MAJOR -eq 3 ] && ln -sf /usr/lib/$ARCH/libtommath.so.1 /usr/lib/$ARCH/libtommath.so.0 || true
+
+# System path
+ENV PATH=/opt/firebird/bin:$PATH
+
+# Data directory
+ENV FIREBIRD_DATA=/var/lib/firebird/data
+RUN set -eux; \
+    mkdir -p "$FIREBIRD_DATA"; \
+    chown -R firebird:firebird "$FIREBIRD_DATA"; \
+    chmod 755 "$FIREBIRD_DATA"
+VOLUME $FIREBIRD_DATA
+
+# Entrypoint
+COPY entrypoint.sh /usr/local/bin/
+RUN set -eux; \
+    chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["tini", "--", "entrypoint.sh"]
+
+STOPSIGNAL SIGTERM
+EXPOSE 3050/tcp
+
+# Fix terminfo location
+ENV TERMINFO=/lib/terminfo/
+
+CMD ["firebird"]
+

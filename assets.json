@@ -1,6 +1,6 @@
 {
   "config": {
-    "defaultDistro": "bookworm",
+    "defaultDistro": "trixie",
     "distros": {
       "bookworm": {
         "baseImage": "debian:bookworm-slim",
@@ -21,15 +21,64 @@
         "baseImage": "ubuntu:noble",
         "icuPackage": "libicu74",
         "extraPackages": ""
+      },
+      "trixie": {
+        "baseImage": "debian:trixie-slim",
+        "icuPackage": "libicu76",
+        "extraPackages": ""
       }
     },
     "blockedVariants": {
       "3": [
-        "noble"
+        "noble",
+        "trixie"
       ]
     }
   },
   "versions": [
+    {
+      "version": "5.0.4",
+      "releases": {
+        "amd64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v5.0.4/Firebird-5.0.4.1812-0-linux-x64.tar.gz",
+          "sha256": "ab6a15a0258f38b022be496bb5e038c14e8628ce9acd0f9a06288a3baedd917b"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v5.0.4/Firebird-5.0.4.1812-0-linux-arm64.tar.gz",
+          "sha256": "1a3eb3d46b82e96c784800aeec37287d4c47acec4d8caed6c7897beb4ff6cee0"
+        }
+      },
+      "tags": {
+        "bookworm": [
+          "5.0.4-bookworm",
+          "5-bookworm",
+          "bookworm"
+        ],
+        "bullseye": [
+          "5.0.4-bullseye",
+          "5-bullseye",
+          "bullseye"
+        ],
+        "jammy": [
+          "5.0.4-jammy",
+          "5-jammy",
+          "jammy"
+        ],
+        "noble": [
+          "5.0.4-noble",
+          "5-noble",
+          "noble"
+        ],
+        "trixie": [
+          "5.0.4-trixie",
+          "5-trixie",
+          "trixie",
+          "5.0.4",
+          "5",
+          "latest"
+        ]
+      }
+    },
     {
       "version": "5.0.3",
       "releases": {
@@ -43,28 +92,13 @@
         }
       },
       "tags": {
-        "bookworm": [
-          "5.0.3-bookworm",
-          "5-bookworm",
-          "bookworm",
-          "5.0.3",
-          "5",
-          "latest"
-        ],
-        "bullseye": [
-          "5.0.3-bullseye",
-          "5-bullseye",
-          "bullseye"
-        ],
-        "jammy": [
-          "5.0.3-jammy",
-          "5-jammy",
-          "jammy"
-        ],
-        "noble": [
-          "5.0.3-noble",
-          "5-noble",
-          "noble"
+        "bookworm": "5.0.3-bookworm",
+        "bullseye": "5.0.3-bullseye",
+        "jammy": "5.0.3-jammy",
+        "noble": "5.0.3-noble",
+        "trixie": [
+          "5.0.3-trixie",
+          "5.0.3"
         ]
       }
     },
@@ -81,18 +115,13 @@
         }
       },
       "tags": {
-        "bookworm": [
-          "5.0.2-bookworm",
+        "bookworm": "5.0.2-bookworm",
+        "bullseye": "5.0.2-bullseye",
+        "jammy": "5.0.2-jammy",
+        "noble": "5.0.2-noble",
+        "trixie": [
+          "5.0.2-trixie",
           "5.0.2"
-        ],
-        "bullseye": [
-          "5.0.2-bullseye"
-        ],
-        "jammy": [
-          "5.0.2-jammy"
-        ],
-        "noble": [
-          "5.0.2-noble"
         ]
       }
     },
@@ -109,18 +138,13 @@
         }
       },
       "tags": {
-        "bookworm": [
-          "5.0.1-bookworm",
+        "bookworm": "5.0.1-bookworm",
+        "bullseye": "5.0.1-bullseye",
+        "jammy": "5.0.1-jammy",
+        "noble": "5.0.1-noble",
+        "trixie": [
+          "5.0.1-trixie",
           "5.0.1"
-        ],
-        "bullseye": [
-          "5.0.1-bullseye"
-        ],
-        "jammy": [
-          "5.0.1-jammy"
-        ],
-        "noble": [
-          "5.0.1-noble"
         ]
       }
     },
@@ -137,18 +161,50 @@
         }
       },
       "tags": {
-        "bookworm": [
-          "5.0.0-bookworm",
+        "bookworm": "5.0.0-bookworm",
+        "bullseye": "5.0.0-bullseye",
+        "jammy": "5.0.0-jammy",
+        "noble": "5.0.0-noble",
+        "trixie": [
+          "5.0.0-trixie",
           "5.0.0"
+        ]
+      }
+    },
+    {
+      "version": "4.0.7",
+      "releases": {
+        "amd64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.7/Firebird-4.0.7.3271-0.amd64.tar.gz",
+          "sha256": "d2964dfb190d7b0ec57271b53e6539f715ecc119f1cb8cd10339662eed9a7dea"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.7/Firebird-4.0.7.3271-0.arm64.tar.gz",
+          "sha256": "e22a0f1ae1eaaf46e430e8b59a6f5c413589a62cf97ded4da23d58ca5cb9139b"
+        }
+      },
+      "tags": {
+        "bookworm": [
+          "4.0.7-bookworm",
+          "4-bookworm"
         ],
         "bullseye": [
-          "5.0.0-bullseye"
+          "4.0.7-bullseye",
+          "4-bullseye"
         ],
         "jammy": [
-          "5.0.0-jammy"
+          "4.0.7-jammy",
+          "4-jammy"
         ],
         "noble": [
-          "5.0.0-noble"
+          "4.0.7-noble",
+          "4-noble"
+        ],
+        "trixie": [
+          "4.0.7-trixie",
+          "4-trixie",
+          "4.0.7",
+          "4"
         ]
       }
     },
@@ -158,26 +214,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.6/Firebird-4.0.6.3221-0.amd64.tar.gz",
           "sha256": "6ff5f672e10ee38ec5fc5394012ac83fe19872543dd2fefa249c1ccf62bc0075"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.6/Firebird-4.0.6.3221-0.arm64.tar.gz",
+          "sha256": "0c9e5ebbb77e141082151db2268044f7305c8f93a3ba092b461beb48ac0d8225"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.6-bookworm",
-          "4-bookworm",
-          "4.0.6",
-          "4"
-        ],
-        "bullseye": [
-          "4.0.6-bullseye",
-          "4-bullseye"
-        ],
-        "jammy": [
-          "4.0.6-jammy",
-          "4-jammy"
-        ],
-        "noble": [
-          "4.0.6-noble",
-          "4-noble"
+        "bookworm": "4.0.6-bookworm",
+        "bullseye": "4.0.6-bullseye",
+        "jammy": "4.0.6-jammy",
+        "noble": "4.0.6-noble",
+        "trixie": [
+          "4.0.6-trixie",
+          "4.0.6"
         ]
       }
     },
@@ -187,21 +237,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.5/Firebird-4.0.5.3140-0.amd64.tar.gz",
           "sha256": "6ae43e4fa31ddc99220575023b7d954fb218c063375bb589b16fbe9fcdfdcaa6"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.5/Firebird-4.0.5.3140-0.arm64.tar.gz",
+          "sha256": "83b1f51ee225ccd89990aa078c5a736f4887bfe92806e15f81cc63d1985cf8cc"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.5-bookworm",
+        "bookworm": "4.0.5-bookworm",
+        "bullseye": "4.0.5-bullseye",
+        "jammy": "4.0.5-jammy",
+        "noble": "4.0.5-noble",
+        "trixie": [
+          "4.0.5-trixie",
           "4.0.5"
-        ],
-        "bullseye": [
-          "4.0.5-bullseye"
-        ],
-        "jammy": [
-          "4.0.5-jammy"
-        ],
-        "noble": [
-          "4.0.5-noble"
         ]
       }
     },
@@ -211,21 +260,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.4/Firebird-4.0.4.3010-0.amd64.tar.gz",
           "sha256": "ef589301c5e13a1f8481e1e38c453641ef5082344bf69edb51f8aa9f036bcaca"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.4/Firebird-4.0.4.3010-0.arm64.tar.gz",
+          "sha256": "1d4e695a233829fbb25457a9480855eb50c1be105033513551aadada457e17ff"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.4-bookworm",
+        "bookworm": "4.0.4-bookworm",
+        "bullseye": "4.0.4-bullseye",
+        "jammy": "4.0.4-jammy",
+        "noble": "4.0.4-noble",
+        "trixie": [
+          "4.0.4-trixie",
           "4.0.4"
-        ],
-        "bullseye": [
-          "4.0.4-bullseye"
-        ],
-        "jammy": [
-          "4.0.4-jammy"
-        ],
-        "noble": [
-          "4.0.4-noble"
         ]
       }
     },
@@ -235,21 +283,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.3/Firebird-4.0.3.2975-0.amd64.tar.gz",
           "sha256": "bd439c3c8f74fd03a592eafd20de37ce028c424fbe023352f1bd17db54c3257d"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.3/Firebird-4.0.3.2975-0.arm64.tar.gz",
+          "sha256": "fa8f6c799382958539122422380e64d569d71ecbcbf7fe4e89df9065462b2ea7"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.3-bookworm",
+        "bookworm": "4.0.3-bookworm",
+        "bullseye": "4.0.3-bullseye",
+        "jammy": "4.0.3-jammy",
+        "noble": "4.0.3-noble",
+        "trixie": [
+          "4.0.3-trixie",
           "4.0.3"
-        ],
-        "bullseye": [
-          "4.0.3-bullseye"
-        ],
-        "jammy": [
-          "4.0.3-jammy"
-        ],
-        "noble": [
-          "4.0.3-noble"
         ]
       }
     },
@@ -259,21 +306,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.2/Firebird-4.0.2.2816-0.amd64.tar.gz",
           "sha256": "70108f9854a522ac6eb7b2bdc1bda9780aab97dbfbf358ced90c0db13b8af9fa"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.2/Firebird-4.0.2.2816-0.arm64.tar.gz",
+          "sha256": "b45b5058c0d6f3a61897ab3eb6f53aaaa45ea0af8198044debd7bdccc583df18"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.2-bookworm",
+        "bookworm": "4.0.2-bookworm",
+        "bullseye": "4.0.2-bullseye",
+        "jammy": "4.0.2-jammy",
+        "noble": "4.0.2-noble",
+        "trixie": [
+          "4.0.2-trixie",
           "4.0.2"
-        ],
-        "bullseye": [
-          "4.0.2-bullseye"
-        ],
-        "jammy": [
-          "4.0.2-jammy"
-        ],
-        "noble": [
-          "4.0.2-noble"
         ]
       }
     },
@@ -283,21 +329,20 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.1/Firebird-4.0.1.2692-0.amd64.tar.gz",
           "sha256": "90b6727b8366b3674fc30ba13d0f52ab0b419c3bb3a4224c8d3f480143538998"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.1/Firebird-4.0.1.2692-0.arm64.tar.gz",
+          "sha256": "04b20944c76f44f3417a83c1e207d52cc0cd3995b27c79be5413c73ecc6d3f0c"
         }
       },
       "tags": {
-        "bookworm": [
-          "4.0.1-bookworm",
+        "bookworm": "4.0.1-bookworm",
+        "bullseye": "4.0.1-bullseye",
+        "jammy": "4.0.1-jammy",
+        "noble": "4.0.1-noble",
+        "trixie": [
+          "4.0.1-trixie",
           "4.0.1"
-        ],
-        "bullseye": [
-          "4.0.1-bullseye"
-        ],
-        "jammy": [
-          "4.0.1-jammy"
-        ],
-        "noble": [
-          "4.0.1-noble"
         ]
       }
     },
@@ -307,21 +352,47 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.0/Firebird-4.0.0.2496-0.amd64.tar.gz",
           "sha256": "06f6e00b9657a1967f21b34bea8150d5a3e5b1d1b1313bb6455e16878b42d63e"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.0/Firebird-4.0.0.2496-0.arm64.tar.gz",
+          "sha256": "9963eab1c95ac332d2e5782a3ee33112e4dcebc67476f316b17deeec5da4c172"
+        }
+      },
+      "tags": {
+        "bookworm": "4.0.0-bookworm",
+        "bullseye": "4.0.0-bullseye",
+        "jammy": "4.0.0-jammy",
+        "noble": "4.0.0-noble",
+        "trixie": [
+          "4.0.0-trixie",
+          "4.0.0"
+        ]
+      }
+    },
+    {
+      "version": "3.0.14",
+      "releases": {
+        "amd64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.14/Firebird-3.0.14.33856-0.amd64.tar.gz",
+          "sha256": "d6fedba1108a46cea2b5f753674046fff0e43c6af27ba01657511635cbc9670f"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.14/Firebird-3.0.14.33856-0.arm64.tar.gz",
+          "sha256": "52ecf8dc8ca67c27e08b06b2aaf3811448c7552b568c5f37705972d1c4ad9cca"
         }
       },
       "tags": {
         "bookworm": [
-          "4.0.0-bookworm",
-          "4.0.0"
+          "3.0.14-bookworm",
+          "3-bookworm"
         ],
         "bullseye": [
-          "4.0.0-bullseye"
+          "3.0.14-bullseye",
+          "3-bullseye"
         ],
         "jammy": [
-          "4.0.0-jammy"
-        ],
-        "noble": [
-          "4.0.0-noble"
+          "3.0.14-jammy",
+          "3-jammy"
         ]
       }
     },
@@ -331,23 +402,16 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.13/Firebird-3.0.13.33818-0.amd64.tar.gz",
           "sha256": "677e19d6308869d5dd0836a342157c7bd1e4b5a873aa385832da01d81db444dd"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.13/Firebird-3.0.13.33818-0.arm64.tar.gz",
+          "sha256": "8a79eb550670ee0a0fcdf87f26b244c0b8a83b221a904e5ada0beaac32793063"
         }
       },
       "tags": {
-        "bookworm": [
-          "3.0.13-bookworm",
-          "3-bookworm",
-          "3.0.13",
-          "3"
-        ],
-        "bullseye": [
-          "3.0.13-bullseye",
-          "3-bullseye"
-        ],
-        "jammy": [
-          "3.0.13-jammy",
-          "3-jammy"
-        ]
+        "bookworm": "3.0.13-bookworm",
+        "bullseye": "3.0.13-bullseye",
+        "jammy": "3.0.13-jammy"
       }
     },
     {
@@ -356,19 +420,16 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.12/Firebird-3.0.12.33787-0.amd64.tar.gz",
           "sha256": "406a8887ab318a5d8a20781fc1d38a0ca30acdbddbc1558b077646bb2e2e283f"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.12/Firebird-3.0.12.33787-0.arm64.tar.gz",
+          "sha256": "e629d03f7e8684716ecb4fade563fa8eb4e4b7c96d48fd2b6dcf081a2d7557c9"
         }
       },
       "tags": {
-        "bookworm": [
-          "3.0.12-bookworm",
-          "3.0.12"
-        ],
-        "bullseye": [
-          "3.0.12-bullseye"
-        ],
-        "jammy": [
-          "3.0.12-jammy"
-        ]
+        "bookworm": "3.0.12-bookworm",
+        "bullseye": "3.0.12-bullseye",
+        "jammy": "3.0.12-jammy"
       }
     },
     {
@@ -377,19 +438,16 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.11/Firebird-3.0.11.33703-0.amd64.tar.gz",
           "sha256": "713757e09b40b2631d800dacd9b80179b7eb75693a72089136055a7154413a3e"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.11/Firebird-3.0.11.33703-0.arm64.tar.gz",
+          "sha256": "04db9159789bef1bdcacf8404ba01e0a0b628a64dba1424eeed21a9e7b444631"
         }
       },
       "tags": {
-        "bookworm": [
-          "3.0.11-bookworm",
-          "3.0.11"
-        ],
-        "bullseye": [
-          "3.0.11-bullseye"
-        ],
-        "jammy": [
-          "3.0.11-jammy"
-        ]
+        "bookworm": "3.0.11-bookworm",
+        "bullseye": "3.0.11-bullseye",
+        "jammy": "3.0.11-jammy"
       }
     },
     {
@@ -398,19 +456,16 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.10/Firebird-3.0.10.33601-0.amd64.tar.gz",
           "sha256": "5e0db3b9312c5bed3eccd1855ec07df5a50176dbff35b8ebf998360b59561cf0"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.10/Firebird-3.0.10.33601-0.arm64.tar.gz",
+          "sha256": "bb77e8c57427c2755a832a0cfb749e5ac97229f8b1c83b5a5d17dc8fbf7f5156"
         }
       },
       "tags": {
-        "bookworm": [
-          "3.0.10-bookworm",
-          "3.0.10"
-        ],
-        "bullseye": [
-          "3.0.10-bullseye"
-        ],
-        "jammy": [
-          "3.0.10-jammy"
-        ]
+        "bookworm": "3.0.10-bookworm",
+        "bullseye": "3.0.10-bullseye",
+        "jammy": "3.0.10-jammy"
       }
     },
     {
@@ -419,40 +474,16 @@
         "amd64": {
           "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.9/Firebird-3.0.9.33560-0.amd64.tar.gz",
           "sha256": "0a80a5dc507f388e96adf9b64584c0b568d94a8f3df19d7baec494c5f98ba5a4"
+        },
+        "arm64": {
+          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.9/Firebird-3.0.9.33560-0.arm64.tar.gz",
+          "sha256": "3403fce69e17042182dc17f216413fc84b4075f4a62382a4e1434da62e617af9"
         }
       },
       "tags": {
-        "bookworm": [
-          "3.0.9-bookworm",
-          "3.0.9"
-        ],
-        "bullseye": [
-          "3.0.9-bullseye"
-        ],
-        "jammy": [
-          "3.0.9-jammy"
-        ]
-      }
-    },
-    {
-      "version": "3.0.8",
-      "releases": {
-        "amd64": {
-          "url": "https://github.com/FirebirdSQL/firebird/releases/download/v3.0.8/Firebird-3.0.8.33535-0.amd64.tar.gz",
-          "sha256": "fbf154244d3568f4de4ee68769ed71a0699845197ae1c02c2029dc4d0f1af5f9"
-        }
-      },
-      "tags": {
-        "bookworm": [
-          "3.0.8-bookworm",
-          "3.0.8"
-        ],
-        "bullseye": [
-          "3.0.8-bullseye"
-        ],
-        "jammy": [
-          "3.0.8-jammy"
-        ]
+        "bookworm": "3.0.9-bookworm",
+        "bullseye": "3.0.9-bullseye",
+        "jammy": "3.0.9-jammy"
       }
     }
   ]

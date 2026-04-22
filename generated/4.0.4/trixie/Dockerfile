@@ -5,13 +5,13 @@
 # Best practices for Dockerfile instructions
 #   https://docs.docker.com/develop/develop-images/instructions/
 
-FROM ubuntu:jammy
+FROM debian:trixie-slim
 
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-ENV FIREBIRD_VERSION=3.0.8
-ENV FIREBIRD_MAJOR=3
+ENV FIREBIRD_VERSION=4.0.4
+ENV FIREBIRD_MAJOR=4
 
 # https://linuxcommand.org/lc3_man_pages/seth.html
 #   -e  Exit immediately if a command exits with a non-zero status.
@@ -25,14 +25,13 @@ RUN set -eux; \
     # Install prerequisites + tini + curl/ca-certificates for download
     apt-get install -y --no-install-recommends \
         libatomic1 \
-        libicu70 \
+        libicu76 \
         $([ $FIREBIRD_MAJOR -eq 3 ] && echo 'libncurses5' || echo 'libncurses6') \
         libtomcrypt1 \
         libtommath1 \
         netbase \
         procps \
         tini \
-        tzdata \
         ca-certificates \
         curl; \
     \
@@ -40,8 +39,12 @@ RUN set -eux; \
     ARCH=$(dpkg --print-architecture); \
     case "$ARCH" in \
         amd64) \
-            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v3.0.8/Firebird-3.0.8.33535-0.amd64.tar.gz'; \
-            FIREBIRD_SHA256='fbf154244d3568f4de4ee68769ed71a0699845197ae1c02c2029dc4d0f1af5f9'; \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v4.0.4/Firebird-4.0.4.3010-0.amd64.tar.gz'; \
+            FIREBIRD_SHA256='ef589301c5e13a1f8481e1e38c453641ef5082344bf69edb51f8aa9f036bcaca'; \
+            ;; \
+        arm64) \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v4.0.4/Firebird-4.0.4.3010-0.arm64.tar.gz'; \
+            FIREBIRD_SHA256='1d4e695a233829fbb25457a9480855eb50c1be105033513551aadada457e17ff'; \
             ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac; \

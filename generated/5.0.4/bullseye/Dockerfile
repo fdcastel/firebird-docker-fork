@@ -10,8 +10,8 @@ FROM debian:bullseye-slim
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-ENV FIREBIRD_VERSION=3.0.8
-ENV FIREBIRD_MAJOR=3
+ENV FIREBIRD_VERSION=5.0.4
+ENV FIREBIRD_MAJOR=5
 
 # https://linuxcommand.org/lc3_man_pages/seth.html
 #   -e  Exit immediately if a command exits with a non-zero status.
@@ -39,8 +39,12 @@ RUN set -eux; \
     ARCH=$(dpkg --print-architecture); \
     case "$ARCH" in \
         amd64) \
-            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v3.0.8/Firebird-3.0.8.33535-0.amd64.tar.gz'; \
-            FIREBIRD_SHA256='fbf154244d3568f4de4ee68769ed71a0699845197ae1c02c2029dc4d0f1af5f9'; \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v5.0.4/Firebird-5.0.4.1812-0-linux-x64.tar.gz'; \
+            FIREBIRD_SHA256='ab6a15a0258f38b022be496bb5e038c14e8628ce9acd0f9a06288a3baedd917b'; \
+            ;; \
+        arm64) \
+            FIREBIRD_URL='https://github.com/FirebirdSQL/firebird/releases/download/v5.0.4/Firebird-5.0.4.1812-0-linux-arm64.tar.gz'; \
+            FIREBIRD_SHA256='1a3eb3d46b82e96c784800aeec37287d4c47acec4d8caed6c7897beb4ff6cee0'; \
             ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac; \

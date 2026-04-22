@@ -5,7 +5,7 @@ name: publish-fork
 # - Runs on: Any fork (uses built-in GITHUB_TOKEN — no extra secrets required)
 #
 # Images are published to ghcr.io/<owner>/firebird
-# Default scope: latest Firebird version + bookworm (fast, ~2 minutes)
+# Default scope: latest Firebird version + trixie (fast, ~2 minutes)
 # Default result: ONE package — ghcr.io/<owner>/firebird — with all expected tags.
 #
 # With include-arm64=true: publishes ghcr.io/<owner>/firebird as a multi-arch image.
@@ -24,7 +24,7 @@ on:
         required: false
         type: string
       distro-filter:
-        description: 'Distro filter (e.g. bookworm, jammy). Empty = default distro (bookworm).'
+        description: 'Distro filter (e.g. trixie, bookworm, jammy). Empty = default distro (trixie).'
         required: false
         type: string
       include-arm64:
