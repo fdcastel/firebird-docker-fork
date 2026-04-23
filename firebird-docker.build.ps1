@@ -82,11 +82,9 @@ task Update-Assets {
                 }
             }
 
-            # Get arm64 release (FB5+ only). FB3 and FB4 ship arm64 tarballs but
-            # use a different layout (pre-extracted `firebird/` root with
-            # AfterUntar.sh instead of an `install.sh` installer), which our
-            # Dockerfile template can't consume — so we intentionally skip them
-            # and keep FB3/FB4 as amd64-only.
+            # Get arm64 release (FB5+ only). FB3/FB4 `.arm64.tar.gz` assets are
+            # Android builds with a misleading name (per asfernandes, FirebirdSQL/firebird-docker#38),
+            # not Linux ARM64 — Linux ARM* packaging starts at FB5. See DECISIONS.md D-015.
             if ($majorVersion -ge 5) {
                 try {
                     $arm64 = Find-FirebirdRelease -Version ([semver]"$version") -RuntimeIdentifier 'linux-arm64'
