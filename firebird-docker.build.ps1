@@ -6,7 +6,7 @@ param(
     [string]$TestFilter,          # Filter by test name (e.g., 'FIREBIRD_USER_can_create_user'). Used only in the 'Test' task.
 
     [ValidateSet('master', 'v5.0-release', 'v4.0')]
-    [string]$Branch,              # Snapshot branch. Used only in the 'Build-Snapshot' task.
+    [string]$Branch,              # Snapshot branch. Used by 'Build-Snapshot' / 'Publish-Snapshot-Manifests'.
 
     [string]$Registry             # Image registry/owner prefix. Defaults to 'firebirdsql' (Docker Hub).
                                   # Override for forks: e.g. 'ghcr.io/myusername'
@@ -576,12 +576,34 @@ task Publish-Manifests FilteredAssets, {
     }
 }
 
-# Synopsis: Build a snapshot image from a Firebird pre-release branch.
-task Build-Snapshot LoadAssets, {
+# Helper: produces { snapshotTag, major, defaultDistro } for a given snapshot branch.
+function Get-SnapshotMeta($Branch) {
     if (-not $Branch) {
-        throw "The -Branch parameter is required for Build-Snapshot. Use: Invoke-Build Build-Snapshot -Branch master"
+        throw "The -Branch parameter is required. Use: -Branch master|v5.0-release|v4.0"
     }
+    $snapshotTag = switch ($Branch) {
+        'master'        { '6-snapshot' }
+        'v5.0-release'  { '5-snapshot' }
+        'v4.0'          { '4-snapshot' }
+        default         { throw "Unknown snapshot branch: $Branch" }
+    }
+    $major = switch ($Branch) {
+        'master'        { '6' }
+        'v5.0-release'  { '5' }
+        'v4.0'          { '4' }
+    }
+    [pscustomobject]@{
+        SnapshotTag   = $snapshotTag
+        Major         = $major
+        DefaultDistro = $script:assetsData.config.defaultDistro
+    }
+}
 
+# Synopsis: Build a snapshot image and push it by digest to the registry.
+# Saves the digest to generated/digests-snapshot-{arch}.json so a later
+# Publish-Snapshot-Manifests run can assemble the multi-arch manifest.
+# Caller must be logged into the registry before invoking this task.
+task Build-Snapshot LoadAssets, {
     # PSFirebird is required for this task
     if (-not (Get-Module PSFirebird -ListAvailable)) {
         Install-Module PSFirebird -MinimumVersion '1.0.0' -Force -Scope CurrentUser
@@ -591,7 +613,10 @@ task Build-Snapshot LoadAssets, {
     $PSStyle.OutputRendering = 'PlainText'
     $imagePrefix = $script:imagePrefix
     $imageName = 'firebird'
-    $defaultDistro = $script:assetsData.config.defaultDistro
+    $meta = Get-SnapshotMeta $Branch
+    $snapshotTag = $meta.SnapshotTag
+    $major = $meta.Major
+    $defaultDistro = $meta.DefaultDistro
 
     # Detect host architecture
     $hostArch = if ($IsLinux) { (dpkg --print-architecture 2>$null) ?? 'amd64' } else { 'amd64' }
@@ -601,20 +626,6 @@ task Build-Snapshot LoadAssets, {
     $snapshot = Find-FirebirdSnapshotRelease -Branch $Branch -RuntimeIdentifier $rid
 
     Write-Build Cyan "Found: $($snapshot.FileName) (uploaded: $($snapshot.UploadedAt))"
-
-    # Determine version tag from branch
-    $snapshotTag = switch ($Branch) {
-        'master'        { '6-snapshot' }
-        'v5.0-release'  { '5-snapshot' }
-        'v4.0'          { '4-snapshot' }
-    }
-
-    # Determine major version for Dockerfile template
-    $major = switch ($Branch) {
-        'master'        { '6' }
-        'v5.0-release'  { '5' }
-        'v4.0'          { '4' }
-    }
 
     # Prepare snapshot Dockerfile
     $snapshotFolder = Join-Path $outputFolder "snapshot-$Branch" $defaultDistro
@@ -645,24 +656,71 @@ task Build-Snapshot LoadAssets, {
     Write-GeneratedFile -Content $dockerfile -Destination "$snapshotFolder/Dockerfile"
     Copy-Item './src/entrypoint.sh' $snapshotFolder
 
-    # Tag with both the bare alias (e.g. `6-snapshot`) and the base-qualified form
-    # (e.g. `6-snapshot-trixie`) so users can tell which distro the snapshot was built on.
-    $snapshotTagWithDistro = "$snapshotTag-$defaultDistro"
-
-    # Build
+    # Build and push by digest. Final tags (e.g. `6-snapshot`, `6-snapshot-trixie`)
+    # are assembled from per-arch digests by Publish-Snapshot-Manifests.
+    $metadataFile = Join-Path ([System.IO.Path]::GetTempPath()) "metadata-snapshot-$Branch.json"
     $buildArgs = @(
-        'buildx', 'build', '--load'
-        '--tag', "$imagePrefix/${imageName}:$snapshotTag"
-        '--tag', "$imagePrefix/${imageName}:$snapshotTagWithDistro"
+        'buildx', 'build'
+        '--output', "type=image,name=$imagePrefix/$imageName,push-by-digest=true,name-canonical=true,push=true"
+        '--metadata-file', $metadataFile
         '--label', 'org.opencontainers.image.description=Firebird Database (snapshot)'
         '--label', "org.opencontainers.image.version=$snapshotTag"
         '--progress=plain'
         $snapshotFolder
     )
-    Write-Build Cyan "----- [snapshot / $Branch / $defaultDistro / $hostArch] -----"
+    Write-Build Cyan "----- [snapshot / $Branch / $defaultDistro / $hostArch → push-by-digest] -----"
     exec { & docker $buildArgs *>&1 }
 
-    Write-Build Green "Snapshot image built: $imagePrefix/${imageName}:$snapshotTag (also tagged $snapshotTagWithDistro)"
+    $metadata = Get-Content $metadataFile -Raw | ConvertFrom-Json
+    $digest = $metadata.'containerimage.digest'
+
+    # Save digest for later manifest assembly
+    $digestFile = Join-Path $outputFolder "digests-snapshot-$hostArch.json"
+    New-Item -ItemType Directory (Split-Path $digestFile) -Force > $null
+    @{ $snapshotTag = $digest } | ConvertTo-Json | Out-File $digestFile -Encoding UTF8
+
+    Write-Build Green "Snapshot $snapshotTag pushed by digest: $digest"
+    Write-Build Green "Digest saved to $digestFile"
+}
+
+# Synopsis: Assemble a multi-arch (or single-arch) manifest for a snapshot branch
+# using digests previously written by Build-Snapshot. Reads
+# generated/digests-snapshot-amd64.json (required) and
+# generated/digests-snapshot-arm64.json (optional).
+task Publish-Snapshot-Manifests LoadAssets, {
+    $imagePrefix = $script:imagePrefix
+    $imageName = 'firebird'
+    $meta = Get-SnapshotMeta $Branch
+    $snapshotTag = $meta.SnapshotTag
+    $defaultDistro = $meta.DefaultDistro
+    $snapshotTagWithDistro = "$snapshotTag-$defaultDistro"
+
+    $amd64File = Join-Path $outputFolder 'digests-snapshot-amd64.json'
+    $arm64File = Join-Path $outputFolder 'digests-snapshot-arm64.json'
+
+    if (-not (Test-Path $amd64File)) {
+        throw "Required digest file not found: $amd64File. Run Build-Snapshot on amd64 first."
+    }
+    $amd64Digest = (Get-Content $amd64File -Raw | ConvertFrom-Json).$snapshotTag
+    if (-not $amd64Digest) {
+        throw "No digest for '$snapshotTag' in $amd64File."
+    }
+
+    $sources = @("$imagePrefix/${imageName}@$amd64Digest")
+    if (Test-Path $arm64File) {
+        $arm64Digest = (Get-Content $arm64File -Raw | ConvertFrom-Json).$snapshotTag
+        if ($arm64Digest) {
+            $sources += "$imagePrefix/${imageName}@$arm64Digest"
+        }
+    }
+
+    foreach ($tag in @($snapshotTag, $snapshotTagWithDistro)) {
+        Write-Build Cyan "  $tag → manifest ($($sources.Count) arch)"
+        $tagArgs = @('buildx', 'imagetools', 'create', '--tag', "$imagePrefix/${imageName}:$tag") + $sources
+        exec { & docker $tagArgs *>&1 }
+    }
+
+    Write-Build Green "Snapshot manifests published: $snapshotTag, $snapshotTagWithDistro"
 }
 
 # Synopsis: Default task.
