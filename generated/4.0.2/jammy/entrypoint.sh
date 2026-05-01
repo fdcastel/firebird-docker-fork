@@ -218,7 +218,7 @@ init_db() {
                     . "$f"
                 fi
                 ;;
-            *.sql)     printf '  running %s\n' "$f"; process_sql < "$f"; printf '\n' ;;
+            *.sql)     printf '  running %s\n' "$f"; cat "$f" | process_sql; printf '\n' ;;
             *.sql.gz)  printf '  running %s\n' "$f"; gunzip -c "$f" | process_sql; printf '\n' ;;
             *.sql.xz)  printf '  running %s\n' "$f"; xzcat "$f" | process_sql; printf '\n' ;;
             *.sql.zst) printf '  running %s\n' "$f"; zstd -dc "$f" | process_sql; printf '\n' ;;
