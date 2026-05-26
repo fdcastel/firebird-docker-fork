@@ -287,6 +287,10 @@ jobs:
 
       - name: Commit and push changes
         run: |
+          if [ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "Branch '${{ github.ref_name }}' is not the fork's default branch; skipping auto-commit to keep PR/feature branches clean (see DECISIONS.md D-018)."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add generated/ README.md

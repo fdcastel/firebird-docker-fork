@@ -94,6 +94,8 @@ Decisions made during the v2 rewrite, with rationale.
 
 **Rationale:** README links to per-variant `Dockerfile`s (e.g. `generated/5.0.4/trixie/Dockerfile`) need valid targets on GitHub. Keeping the output in git guarantees the links work without requiring contributors to regenerate locally. Auto-commit prevents drift: the committed files always reflect the last successful publish. Contributors must not edit `generated/` by hand — run `Invoke-Build Prepare` to regenerate. The `[skip ci]` marker on the auto-commit prevents a trigger loop.
 
+**Amended by D-018** for the `publish-fork.yaml` case: the auto-commit is now gated to the fork's default branch to prevent PR/feature branches from being polluted with fork-specific registry URLs.
+
 ## D-015: No ARM64 for Firebird 3.x / 4.x
 
 **Decision:** The ARM64 discovery gate in `Update-Assets` is `$majorVersion -ge 5`. FB3 and FB4 are published as amd64-only, even though `.arm64.tar.gz` assets exist in their GitHub releases.
@@ -113,3 +115,9 @@ Decisions made during the v2 rewrite, with rationale.
 **Rationale:** D-007 declared FB3+Noble unsupportable because `libncurses5` had been dropped from Noble's apt sources, and chose a config-level block over template special-casing. Debian Trixie has since dropped the same packages, which would have required adding Trixie to the block list — defeating the intent of D-012 (Trixie as default distro). The FB3 binaries' only remaining unresolved dependencies on Trixie/Noble are `libncurses.so.5` and `libtinfo.so.5` (verified by `ldd`); the corresponding `.deb` files are still served by the bookworm and jammy archive pools and install cleanly. The workaround is localized to one `RUN` block in the template, gated on `FIREBIRD_MAJOR == 3` and keyed off `/etc/os-release`. Supersedes the FB3 + (Noble | Trixie) clause of D-007. See [issue #42](https://github.com/FirebirdSQL/firebird-docker/issues/42).
 
 Also adds `tzdata` to Noble's distro `extraPackages` (matching Jammy). FB3 relies on libc `localtime()` for the `TZ` env var, which requires `/usr/share/zoneinfo` — the Ubuntu Noble base image, like Jammy, ships without it. FB4+ embeds its own zoneinfo and is unaffected, which is why the gap surfaced only when re-enabling FB3 builds on Noble.
+
+## D-018: publish-fork auto-commit is gated to the fork's default branch
+
+**Decision:** The `update-repo` job in `publish-fork.yaml` only commits and pushes regenerated `generated/` and `README.md` when running on the fork's default branch (`github.event.repository.default_branch`). Dispatches on PR or feature branches still run `Invoke-Build Prepare` and `Invoke-Build Update-Readme` (so a template-substitution regression still fails the workflow) but skip the `git commit` / `git push`. Amends D-014 for the publish-fork case; `publish.yaml` (the official-repo publish) is unchanged.
+
+**Rationale:** `publish-fork.yaml` passes `-Registry 'ghcr.io/<owner>'` to `Update-Readme`, which substitutes the fork's registry into the README table header. The previous unguarded auto-commit pushed that fork-specific README back to whatever branch was dispatched, including branches with open upstream PRs — directly polluting the PR diff with content that must not land upstream, and breaking GitHub's linear rebase when the upstream master had its own concurrent `README.md` changes (observed during PR #43, which required a force-pushed clean rebase to unblock). Branch-gating preserves D-014's "generated/ tracked in git" invariant on the fork's default branch while keeping PR/feature branches diff-clean against upstream. Confines the `-Registry` rewrite to the only place the fork wants it (its own showcased README on `master`).
