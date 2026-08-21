@@ -255,7 +255,29 @@ Note that both the original variable and its `_FILE` variant are mutually exclus
 
 To use database aliases, create your own `databases.conf` file and configure a [Docker bind mount](https://docs.docker.com/engine/storage/bind-mounts/) for it at `/opt/firebird/databases.conf`.
 
-More information: 
+> **IMPORTANT:** A bind mount _replaces_ the entire file inside the container. The default `databases.conf` shipped with the image contains a required entry for the security database (`security.db`). If your file does not include this entry, Firebird cannot open the security database and the container will fail to start with an error like:
+>
+> ```
+> I/O error during "open" operation for file "security.db"
+> ```
+
+To keep the required entries, start from the default file of the image and append your aliases to it:
+
+```bash
+# Extract the default databases.conf from the image
+docker run --rm firebirdsql/firebird cat /opt/firebird/databases.conf > databases.conf
+
+# Append your aliases
+echo "mydb = /var/lib/firebird/data/mydb.fdb" >> databases.conf
+
+# Use it with a bind mount
+docker run -d --mount type=bind,src=$(pwd)/databases.conf,dst=/opt/firebird/databases.conf \
+    -e FIREBIRD_ROOT_PASSWORD=my_secret_password firebirdsql/firebird
+```
+
+Extracting the file from the same image (and tag) you run also ensures you get the correct security database entry, which is different for each Firebird version.
+
+More information:
 - [Firebird Quick Start Guide](https://www.firebirdsql.org/file/documentation/html/en/firebirddocs/qsg3/firebird-3-quickstartguide.html#qsg3-config-security) (section "Use database aliases")
 
 
