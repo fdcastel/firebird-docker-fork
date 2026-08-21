@@ -524,7 +524,7 @@ task Publish-Manifests FilteredAssets, {
         } catch {
             throw "Digest file '$path' is not valid JSON: $($_.Exception.Message)"
         }
-        $keys = $parsed.PSObject.Properties.Name
+        $keys = @($parsed.PSObject.Properties.Name)
         if (-not $keys -or $keys.Count -eq 0) {
             throw "Digest file '$path' is empty — no digests to assemble."
         }
