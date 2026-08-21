@@ -50,8 +50,14 @@ function Use-Container([string[]]$Parameters, [Parameter(Mandatory)][ScriptBlock
 }
 
 # Wait for a port to be open in a container.
-function Wait-Port([string]$ContainerName, [int]$Port) {
+function Wait-Port([string]$ContainerName, [int]$Port, [int]$TimeoutSeconds = 60) {
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Port -ContainerName $ContainerName -Port $Port)) {
+        if ($stopwatch.Elapsed.TotalSeconds -gt $TimeoutSeconds) {
+            Write-Warning "Port $Port not open in container after $TimeoutSeconds seconds. Output log is:"
+            docker logs $ContainerName
+            throw "Timeout waiting for port $Port in container '$ContainerName'."
+        }
         Start-Sleep -Seconds 0.2
     }
 }

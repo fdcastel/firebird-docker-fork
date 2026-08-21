@@ -269,8 +269,16 @@ create_db() {
 
             local user_and_password=''
             if [ -n "$FIREBIRD_USER" ]; then
+                # The USER clause value is used verbatim as the database owner name
+                #   (it is not parsed as an identifier). Pass the bare username,
+                #   unwrapping it if it came double-quoted from the environment.
+                local owner_name="$FIREBIRD_USER"
+                if [ "${#owner_name}" -ge 2 ] && [ "${owner_name:0:1}" = '"' ] && [ "${owner_name: -1}" = '"' ]; then
+                    owner_name="${owner_name:1:-1}"
+                    owner_name="${owner_name//\"\"/\"}"
+                fi
                 local escaped_user
-                escaped_user=$(escape_sql_string "$(quote_sql_identifier "$FIREBIRD_USER")")
+                escaped_user=$(escape_sql_string "$owner_name")
                 local escaped_password
                 escaped_password=$(escape_sql_string "$FIREBIRD_PASSWORD")
                 user_and_password=" USER '${escaped_user}' PASSWORD '${escaped_password}'"
