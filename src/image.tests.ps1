@@ -490,6 +490,8 @@ task FIREBIRD_USER_with_dot_creates_delimited_user {
 
 task FIREBIRD_USER_already_quoted_is_used_verbatim {
     # Backward compatibility with the pre-existing workaround for issue #44: FIREBIRD_USER='"name.with.dots"'
+    # The user is created verbatim (case-sensitive), so the login name must be passed quoted.
+    #   (pwsh >= 7.3 passes the embedded double quotes verbatim to native commands)
     Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_USER="dba.backend"', '-e', 'FIREBIRD_PASSWORD=bird' {
         param($cId)
 

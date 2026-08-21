@@ -79,6 +79,18 @@ quote_sql_identifier() {
     fi
 }
 
+# usage: unquote_sql_identifier NAME
+#    ie: unquote_sql_identifier '"dba.backend"'
+# Removes the double quotes of a delimited identifier. Other values are returned unchanged.
+unquote_sql_identifier() {
+    local value="$1"
+    if [ "${#value}" -ge 2 ] && [ "${value:0:1}" = '"' ] && [ "${value: -1}" = '"' ]; then
+        value="${value:1:-1}"
+        value="${value//\"\"/\"}"
+    fi
+    printf '%s' "$value"
+}
+
 # usage: firebird_config_set KEY VALUE
 #    ie: firebird_config_set 'WireCrypt' 'Enabled'
 # Set configuration key KEY to VALUE in 'firebird.conf'
@@ -205,7 +217,10 @@ process_sql() {
 	local isql_command=( /opt/firebird/bin/isql -b )
 
     if [ -n "$FIREBIRD_USER" ]; then
-        isql_command+=( -u "$(quote_sql_identifier "$FIREBIRD_USER")" -p "$FIREBIRD_PASSWORD" )
+        # Pass the effective (unquoted) username: this local (embedded) connection skips
+        #   authentication, and the server then normalizes the name exactly like it
+        #   normalized the database owner name, so DDL permissions work in init scripts.
+        isql_command+=( -u "$(unquote_sql_identifier "$(quote_sql_identifier "$FIREBIRD_USER")")" -p "$FIREBIRD_PASSWORD" )
 	fi
 
 	if [ -n "$FIREBIRD_DATABASE" ]; then
@@ -269,14 +284,10 @@ create_db() {
 
             local user_and_password=''
             if [ -n "$FIREBIRD_USER" ]; then
-                # The USER clause value is used verbatim as the database owner name
-                #   (it is not parsed as an identifier). Pass the bare username,
-                #   unwrapping it if it came double-quoted from the environment.
-                local owner_name="$FIREBIRD_USER"
-                if [ "${#owner_name}" -ge 2 ] && [ "${owner_name:0:1}" = '"' ] && [ "${owner_name: -1}" = '"' ]; then
-                    owner_name="${owner_name:1:-1}"
-                    owner_name="${owner_name//\"\"/\"}"
-                fi
+                # The USER clause value is used as the database owner name and is not
+                #   parsed as an identifier. Pass the effective (unquoted) username.
+                local owner_name
+                owner_name=$(unquote_sql_identifier "$(quote_sql_identifier "$FIREBIRD_USER")")
                 local escaped_user
                 escaped_user=$(escape_sql_string "$owner_name")
                 local escaped_password

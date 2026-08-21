@@ -113,7 +113,7 @@ Creates an user in Firebird security database.
 
 You must inform a password in `FIREBIRD_PASSWORD` variable. Otherwise the container initialization will fail.
 
-If the username is not a regular SQL identifier (e.g. it contains dots or dashes, or its case must be preserved — like `dba.backend`) it will be created as a [delimited identifier](https://firebirdsql.org/file/documentation/chunk/en/refdocs/fblangref50/fblangref50-structure.html#fblangref50-structure-identifiers), which is case-sensitive in Firebird. Clients must then connect quoting the username in double quotes, e.g. `isql -u '"dba.backend"'`.
+If the username is not a regular SQL identifier (e.g. it contains dots or dashes, like `dba.backend`) it will be created as a [delimited identifier](https://firebirdsql.org/file/documentation/chunk/en/refdocs/fblangref50/fblangref50-structure.html#fblangref50-structure-identifiers), which is case-sensitive in Firebird. Clients must then connect quoting the username in double quotes, e.g. `isql -u '"dba.backend"'`.
 
 
 
