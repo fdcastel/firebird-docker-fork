@@ -61,6 +61,24 @@ escape_sql_string() {
     printf '%s' "${1//\'/\'\'}"
 }
 
+# usage: quote_sql_identifier NAME
+#    ie: quote_sql_identifier 'dba.backend'
+# Quotes NAME as a SQL identifier when needed.
+#   Regular identifiers are returned unchanged (Firebird treats them as case-insensitive).
+#   Values already wrapped in double quotes are returned verbatim.
+#   Anything else is returned as a delimited (double-quoted, case-sensitive) identifier.
+quote_sql_identifier() {
+    local value="$1"
+    local regular_identifier='^[A-Za-z][A-Za-z0-9_$]*$'
+    if [[ "$value" =~ $regular_identifier ]]; then
+        printf '%s' "$value"
+    elif [ "${#value}" -ge 2 ] && [ "${value:0:1}" = '"' ] && [ "${value: -1}" = '"' ]; then
+        printf '%s' "$value"
+    else
+        printf '"%s"' "${value//\"/\"\"}"
+    fi
+}
+
 # usage: firebird_config_set KEY VALUE
 #    ie: firebird_config_set 'WireCrypt' 'Enabled'
 # Set configuration key KEY to VALUE in 'firebird.conf'
@@ -167,14 +185,14 @@ create_user() {
         requires_user_password
         echo "Creating user '$FIREBIRD_USER'..."
 
-        local escaped_user
-        escaped_user=$(escape_sql_string "$FIREBIRD_USER")
+        local quoted_user
+        quoted_user=$(quote_sql_identifier "$FIREBIRD_USER")
         local escaped_password
         escaped_password=$(escape_sql_string "$FIREBIRD_PASSWORD")
 
         # [Tabs ahead]
         /opt/firebird/bin/isql -b security.db <<-EOL
-			CREATE OR ALTER USER ${escaped_user}
+			CREATE OR ALTER USER ${quoted_user}
 			    PASSWORD '${escaped_password}'
 			    GRANT ADMIN ROLE;
 			EXIT;
@@ -187,7 +205,7 @@ process_sql() {
 	local isql_command=( /opt/firebird/bin/isql -b )
 
     if [ -n "$FIREBIRD_USER" ]; then
-        isql_command+=( -u "$FIREBIRD_USER" -p "$FIREBIRD_PASSWORD" )
+        isql_command+=( -u "$(quote_sql_identifier "$FIREBIRD_USER")" -p "$FIREBIRD_PASSWORD" )
 	fi
 
 	if [ -n "$FIREBIRD_DATABASE" ]; then
@@ -252,7 +270,7 @@ create_db() {
             local user_and_password=''
             if [ -n "$FIREBIRD_USER" ]; then
                 local escaped_user
-                escaped_user=$(escape_sql_string "$FIREBIRD_USER")
+                escaped_user=$(escape_sql_string "$(quote_sql_identifier "$FIREBIRD_USER")")
                 local escaped_password
                 escaped_password=$(escape_sql_string "$FIREBIRD_PASSWORD")
                 user_and_password=" USER '${escaped_user}' PASSWORD '${escaped_password}'"

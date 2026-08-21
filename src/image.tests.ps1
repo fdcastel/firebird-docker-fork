@@ -450,6 +450,49 @@ task FIREBIRD_USER_PASSWORD_with_special_characters {
     }
 }
 
+task FIREBIRD_USER_with_dot_creates_delimited_user {
+    # Issue #44: usernames that are not regular SQL identifiers (e.g. containing dots)
+    # must be created as delimited (double-quoted) identifiers.
+    $initDbFolder = New-TemporaryDirectory
+    try {
+        @'
+        CREATE TABLE init_check (id INTEGER NOT NULL PRIMARY KEY);
+'@ | Out-File "$initDbFolder/10-init.sql"
+
+        Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_USER=dba.backend', '-e', 'FIREBIRD_PASSWORD=bird', '-v', "$($initDbFolder):/docker-entrypoint-initdb.d/" {
+            param($cId)
+
+            # Login as the delimited user: the name must be passed quoted.
+            #   (pwsh >= 7.3 passes the embedded double quotes verbatim to native commands)
+            'SELECT 1 FROM rdb$database;' |
+                docker exec -i $cId isql -b -q -u '"dba.backend"' -p bird inet:///var/lib/firebird/data/test.fdb |
+                    ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected successful login as delimited user ""dba.backend""."
+
+            # Init script must have been executed (process_sql logs in as the delimited user)
+            'SELECT 1 FROM init_check;' |
+                docker exec -i $cId isql -b -q /var/lib/firebird/data/test.fdb |
+                    ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected init script to have created table 'init_check'."
+
+            docker logs $cId |
+                Contains -Pattern "Creating user 'dba\.backend'" -ErrorMessage "Expected log message indicating creation of user 'dba.backend'."
+        }
+    }
+    finally {
+        Remove-Item $initDbFolder -Force -Recurse
+    }
+}
+
+task FIREBIRD_USER_already_quoted_is_used_verbatim {
+    # Backward compatibility with the pre-existing workaround for issue #44: FIREBIRD_USER='"name.with.dots"'
+    Use-Container -Parameters '-e', 'FIREBIRD_DATABASE=test.fdb', '-e', 'FIREBIRD_USER="dba.backend"', '-e', 'FIREBIRD_PASSWORD=bird' {
+        param($cId)
+
+        'SELECT 1 FROM rdb$database;' |
+            docker exec -i $cId isql -b -q -u '"dba.backend"' -p bird inet:///var/lib/firebird/data/test.fdb |
+                ExitCodeIs -ExpectedValue 0 -ErrorMessage "Expected pre-quoted FIREBIRD_USER to keep working."
+    }
+}
+
 task Graceful_shutdown_via_SIGTERM {
     Use-Container -ScriptBlock {
         param($cId)
