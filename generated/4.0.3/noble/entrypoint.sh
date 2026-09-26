@@ -246,7 +246,11 @@ set_sysdba() {
 }
 
 # Requires FIREBIRD_PASSWORD if FIREBIRD_USER is set.
+#   Runs before any other initialization step, so an invalid configuration fails without changing anything.
 requires_user_password() {
+    read_from_file_or_env 'FIREBIRD_USER'
+    read_from_file_or_env 'FIREBIRD_PASSWORD'
+
     if [ -n "$FIREBIRD_USER" ] && [ -z "$FIREBIRD_PASSWORD" ]; then
         # [Tabs ahead]
         cat >&2 <<-EOL
@@ -262,11 +266,7 @@ requires_user_password() {
 
 # Create Firebird user.
 create_user() {
-    read_from_file_or_env 'FIREBIRD_USER'
-    read_from_file_or_env 'FIREBIRD_PASSWORD'
-
     if [ -n "$FIREBIRD_USER" ]; then
-        requires_user_password
         echo "Creating user '$FIREBIRD_USER'..."
 
         local quoted_user
@@ -420,6 +420,7 @@ run_daemon_and_wait() {
 # main()
 #
 if [ "$1" = 'firebird' ]; then
+    requires_user_password
     check_permissions
     set_config
     set_sysdba
